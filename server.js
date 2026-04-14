@@ -182,7 +182,7 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
 
     db.prepare(`
       INSERT INTO listings (id, seller_name, seller_email, stripe_account_id, title, category, description, condition, price, photos, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
     `).run(id, seller_name, seller_email, stripe_account_id, title, category, description, condition, priceInCents, JSON.stringify(photos));
 
     res.json({
@@ -241,29 +241,7 @@ app.get('/listings/:id', (req, res) => {
   }
 });
 
-// ── ADMIN — approve/reject listings ──
-app.post('/admin/listings/:id/approve', (req, res) => {
-  const { adminKey } = req.body;
-  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  db.prepare("UPDATE listings SET status = 'approved' WHERE id = ?").run(req.params.id);
-  res.json({ success: true });
-});
-
-app.post('/admin/listings/:id/reject', (req, res) => {
-  const { adminKey } = req.body;
-  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  db.prepare("UPDATE listings SET status = 'rejected' WHERE id = ?").run(req.params.id);
-  res.json({ success: true });
-});
-
-// Get all pending listings for admin review
-app.post('/admin/listings/pending', (req, res) => {
-  const { adminKey } = req.body;
-  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  const listings = db.prepare("SELECT * FROM listings WHERE status = 'pending' ORDER BY created_at DESC").all()
-    .map(l => ({ ...l, photos: JSON.parse(l.photos || '[]'), price: l.price / 100 }));
-  res.json({ success: true, listings });
-});
+// Admin routes removed — listings auto-approved on submission
 
 // ── CHECKOUT ──
 // Create Stripe payment intent with automatic split
