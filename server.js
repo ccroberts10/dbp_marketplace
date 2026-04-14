@@ -352,6 +352,7 @@ app.get('/split/:price', (req, res) => {
     seller: split.seller / 100,
     dbp: split.dbp / 100,
     devo: split.devo / 100,
+    stripeFee: split.stripeFee / 100,
     sellerPct: Math.round(split.sellerPct * 100),
     dbpPct: Math.round(split.dbpPct * 100),
     devoPct: 5
