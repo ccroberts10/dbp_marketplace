@@ -27,7 +27,10 @@ db.exec(`
     condition TEXT,
     price INTEGER,
     photos TEXT,
-    status TEXT DEFAULT 'pending',
+    listing_type TEXT DEFAULT 'seller',
+    dropoff_tier TEXT DEFAULT 'self',
+    shipping_estimate INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'approved',
     created_at TEXT DEFAULT (datetime('now')),
     sold_at TEXT
   );
@@ -50,29 +53,63 @@ db.exec(`
 // ── SPLITS ──
 // Durango Devo always gets 5%
 // DBP and seller split the remaining 95% based on price tier
-function calculateSplit(priceInCents) {
-  const price = priceInCents / 100;
-  let sellerPct, dbpPct;
+// Handling fee tiers for drop-off shipping service (in cents)
+const HANDLING_FEES = {
+  small:  1500,  // $15 — cassette, stem, small parts
+  medium: 2500,  // $25 — wheels, fork, groupset
+  large:  5000   // $50 — complete bike
+};
 
-  if (price < 100) {
-    sellerPct = 0.60; dbpPct = 0.35;
-  } else if (price < 500) {
-    sellerPct = 0.65; dbpPct = 0.30;
-  } else if (price < 1500) {
-    sellerPct = 0.70; dbpPct = 0.25;
+// Calculate split on ITEM PRICE ONLY — shipping passes through to seller
+// Commission: Seller 80%, DBP ~10% (covers Stripe), Devo 5%
+// DBP absorbs Stripe fees (~2.9% + $0.30) out of its ~15% cut
+function calculateSplit(itemPriceCents, shippingCents, listingType, dropoffTier) {
+  shippingCents = shippingCents || 0;
+  const totalCents = itemPriceCents + shippingCents;
+
+  // Stripe fee on full transaction (item + shipping)
+  const stripeFee = Math.round(totalCents * 0.029 + 30);
+
+  let sellerItemPct, dbpPct, devoPct;
+
+  if (listingType === 'dbp') {
+    // DBP own inventory — no seller, 95% DBP, 5% Devo
+    sellerItemPct = 0.00;
+    dbpPct        = 0.95;
+    devoPct       = 0.05;
   } else {
-    sellerPct = 0.75; dbpPct = 0.20;
+    // Self-serve: 80% seller, 5% Devo, remainder to DBP (covers Stripe)
+    sellerItemPct = 0.80;
+    dbpPct        = 0.15; // DBP gets 15% then pays Stripe from it
+    devoPct       = 0.05;
   }
 
-  const devoPct = 0.05;
-  const stripeFee = Math.round(priceInCents * 0.029 + 30); // 2.9% + 30c
+  // Handling fee deducted from seller payout if drop-off chosen
+  const handlingFee = dropoffTier && dropoffTier !== 'self'
+    ? (HANDLING_FEES[dropoffTier] || 0)
+    : 0;
 
-  const devo   = Math.round(priceInCents * devoPct);
-  const seller = Math.round(priceInCents * sellerPct);
-  const dbp    = priceInCents - seller - devo - stripeFee;
+  const devo         = Math.round(itemPriceCents * devoPct);
+  const sellerItem   = Math.round(itemPriceCents * sellerItemPct);
+  const sellerNet    = sellerItem + shippingCents - handlingFee; // seller gets item% + shipping passthrough - handling
+  const dbpGross     = itemPriceCents - sellerItem - devo;
+  const dbpNet       = dbpGross - stripeFee; // DBP absorbs Stripe
 
-  return { seller, dbp: Math.max(dbp, 0), devo, stripeFee,
-           sellerPct, dbpPct, devoPct };
+  return {
+    itemPrice:    itemPriceCents / 100,
+    shipping:     shippingCents / 100,
+    total:        totalCents / 100,
+    sellerItem:   sellerItem / 100,
+    sellerNet:    sellerNet / 100,
+    devo:         devo / 100,
+    dbpGross:     dbpGross / 100,
+    dbpNet:       Math.max(dbpNet, 0) / 100,
+    stripeFee:    stripeFee / 100,
+    handlingFee:  handlingFee / 100,
+    sellerPct:    Math.round(sellerItemPct * 100),
+    dbpPct:       Math.round(dbpPct * 100),
+    devoPct:      Math.round(devoPct * 100)
+  };
 }
 
 // ── MIDDLEWARE ──
@@ -173,16 +210,18 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
       return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     }
 
+    const { listing_type, dropoff_tier, shipping_estimate } = req.body;
     const priceInCents = Math.round(parseFloat(price) * 100);
+    const shippingCents = Math.round(parseFloat(shipping_estimate || 0) * 100);
     if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1' });
 
     const photos = req.files ? req.files.map(f => '/uploads/' + f.filename) : [];
     const id = uuidv4();
-    const split = calculateSplit(priceInCents);
+    const split = calculateSplit(priceInCents, listing_type);
 
     db.prepare(`
-      INSERT INTO listings (id, seller_name, seller_email, stripe_account_id, title, category, description, condition, price, photos, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+      INSERT INTO listings (id, seller_name, seller_email, stripe_account_id, title, category, description, condition, price, shipping_estimate, photos, listing_type, dropoff_tier, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
     `).run(id, seller_name, seller_email, stripe_account_id, title, category, description, condition, priceInCents, JSON.stringify(photos));
 
     res.json({
@@ -213,7 +252,8 @@ app.get('/listings', (req, res) => {
       ...l,
       photos: JSON.parse(l.photos || '[]'),
       price: l.price / 100,
-      split: calculateSplit(l.price)
+      shipping_estimate: (l.shipping_estimate || 0) / 100,
+      split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier)
     }));
 
     let filtered = listings;
@@ -234,7 +274,8 @@ app.get('/listings/:id', (req, res) => {
     if (!listing) return res.status(404).json({ error: 'Listing not found' });
     listing.photos = JSON.parse(listing.photos || '[]');
     listing.price = listing.price / 100;
-    listing.split = calculateSplit(listing.price * 100);
+    listing.shipping_estimate = (listing.shipping_estimate || 0) / 100;
+    listing.split = calculateSplit(listing.price * 100, listing.shipping_estimate * 100, listing.listing_type, listing.dropoff_tier);
     res.json({ success: true, listing });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -252,12 +293,18 @@ app.post('/checkout', async (req, res) => {
     const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND status = 'approved'").get(listingId);
     if (!listing) return res.status(404).json({ error: 'Listing not found or unavailable' });
 
-    const split = calculateSplit(listing.price);
-    const devoPct = process.env.DEVO_ACCOUNT_ID ? split.devo : 0;
+    const shippingCents = listing.shipping_estimate || 0;
+    const split = calculateSplit(listing.price, shippingCents, listing.listing_type, listing.dropoff_tier);
+
+    // Total charge = item price + shipping
+    const totalCharge = listing.price + shippingCents;
+
+    // Seller transfer = 80% of item price + shipping - handling fee
+    const sellerTransferCents = Math.round(split.sellerNet * 100);
 
     // Create payment intent with automatic transfer to seller
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: listing.price,
+      amount: totalCharge,
       currency: 'usd',
       receipt_email: buyerEmail,
       metadata: {
@@ -317,27 +364,53 @@ app.post('/webhook', async (req, res) => {
 
     // Mark listing as sold
     db.prepare("UPDATE listings SET status = 'sold', sold_at = datetime('now') WHERE id = ?").run(listingId);
-
-    // Mark sale as complete
-    db.prepare("UPDATE sales SET status = 'completed' WHERE payment_intent_id = ?").run(pi.id);
-
-    // If Devo account is set up, send them their share
-    if (process.env.DEVO_ACCOUNT_ID) {
-      const sale = db.prepare("SELECT * FROM sales WHERE payment_intent_id = ?").get(pi.id);
-      if (sale && sale.devo_payout > 0) {
-        await stripe.transfers.create({
-          amount: sale.devo_payout,
-          currency: 'usd',
-          destination: process.env.DEVO_ACCOUNT_ID,
-          description: 'Durango Devo share — ' + pi.metadata.listingTitle
-        });
-      }
-    }
-
-    console.log('Sale completed:', listingId);
+    db.prepare("UPDATE sales SET status = 'delivered' WHERE payment_intent_id = ?").run(pi.id);
+    console.log('Payment confirmed, 72hr buyer window started:', listingId);
   }
 
+  // charge.updated or manual: release payout 72hrs after delivery
+  // In production wire this to your shipping carrier webhook or a cron job
+  // For now payout is held via Stripe's transfer delay settings
+
   res.json({ received: true });
+});
+
+// ── CRON-STYLE: release payouts 72hrs after delivery ──
+// Call this endpoint from a Railway cron or external scheduler every hour
+app.post('/admin/release-payouts', async (req, res) => {
+  const { adminKey } = req.body;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    // Find sales delivered 72+ hours ago that haven't been paid out
+    const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    const pending = db.prepare(
+      "SELECT s.*, l.stripe_account_id, l.title FROM sales s JOIN listings l ON s.listing_id = l.id WHERE s.status = 'delivered' AND s.created_at < ?"
+    ).all(cutoff);
+
+    let released = 0;
+    for (const sale of pending) {
+      try {
+        // Transfer Devo share
+        if (process.env.DEVO_ACCOUNT_ID && sale.devo_payout > 0) {
+          await stripe.transfers.create({
+            amount: sale.devo_payout,
+            currency: 'usd',
+            destination: process.env.DEVO_ACCOUNT_ID,
+            description: 'Durango Devo — ' + sale.listing_id
+          });
+        }
+        // Mark as paid out
+        db.prepare("UPDATE sales SET status = 'paid_out' WHERE id = ?").run(sale.id);
+        released++;
+      } catch(err) {
+        console.error('Payout error for sale', sale.id, err.message);
+      }
+    }
+    res.json({ success: true, released });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── SPLIT CALCULATOR (public) ──
@@ -346,16 +419,23 @@ app.get('/split/:price', (req, res) => {
   if (isNaN(priceInCents) || priceInCents < 100) {
     return res.status(400).json({ error: 'Invalid price' });
   }
-  const split = calculateSplit(priceInCents);
+  const listingType  = req.query.type     || 'seller';
+  const dropoffTier  = req.query.dropoff  || 'self';
+  const shippingCents = Math.round(parseFloat(req.query.shipping || 0) * 100);
+  const split = calculateSplit(priceInCents, shippingCents, listingType, dropoffTier);
   res.json({
-    price: priceInCents / 100,
-    seller: split.seller / 100,
-    dbp: split.dbp / 100,
-    devo: split.devo / 100,
-    stripeFee: split.stripeFee / 100,
-    sellerPct: Math.round(split.sellerPct * 100),
-    dbpPct: Math.round(split.dbpPct * 100),
-    devoPct: 5
+    price:       split.itemPrice,
+    shipping:    split.shipping,
+    total:       split.total,
+    seller:      split.sellerItem,
+    sellerNet:   split.sellerNet,
+    devo:        split.devo,
+    dbp:         split.dbpNet,
+    stripeFee:   split.stripeFee,
+    handlingFee: split.handlingFee,
+    sellerPct:   split.sellerPct,
+    dbpPct:      split.dbpPct,
+    devoPct:     split.devoPct
   });
 });
 
