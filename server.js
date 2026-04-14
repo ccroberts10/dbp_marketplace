@@ -440,3 +440,39 @@ app.get('/split/:price', (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`DBP Marketplace running on port ${PORT}`));
+
+// ── AUTO PAYOUT — runs every hour inside the server process ──
+// Finds sales delivered 72+ hours ago and releases seller payouts
+async function releasePayouts() {
+  try {
+    const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    const pending = db.prepare(
+      "SELECT s.*, l.stripe_account_id, l.title FROM sales s JOIN listings l ON s.listing_id = l.id WHERE s.status = 'delivered' AND s.created_at < ?"
+    ).all(cutoff);
+
+    for (const sale of pending) {
+      try {
+        if (process.env.DEVO_ACCOUNT_ID && sale.devo_payout > 0) {
+          await stripe.transfers.create({
+            amount: sale.devo_payout,
+            currency: 'usd',
+            destination: process.env.DEVO_ACCOUNT_ID,
+            description: 'Durango Devo — ' + sale.listing_id
+          });
+        }
+        db.prepare("UPDATE sales SET status = 'paid_out' WHERE id = ?").run(sale.id);
+        console.log(`Payout released for sale ${sale.id}`);
+      } catch(err) {
+        console.error(`Payout failed for sale ${sale.id}:`, err.message);
+      }
+    }
+
+    if (pending.length > 0) console.log(`Released ${pending.length} payout(s)`);
+  } catch(err) {
+    console.error('releasePayouts error:', err.message);
+  }
+}
+
+// Run once on startup, then every hour
+releasePayouts();
+setInterval(releasePayouts, 60 * 60 * 1000);
