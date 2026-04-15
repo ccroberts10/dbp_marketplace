@@ -132,29 +132,67 @@ app.get('/', (req, res) => res.json({ status: 'DBP Marketplace running' }));
 // ── SELLER ONBOARDING ──
 app.post('/seller/onboard', async (req, res) => {
   try {
-    const { email, name } = req.body;
+    const {
+      email, name, phone,
+      dob_day, dob_month, dob_year,
+      address_line1, address_city, address_state, address_zip
+    } = req.body;
+
     if (!email || !name) return res.status(400).json({ error: 'Email and name required' });
 
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0];
-    const lastName  = nameParts.slice(1).join(' ') || '';
+    const lastName  = nameParts.slice(1).join(' ') || 'Seller';
+
+    // Pre-fill everything we have so Stripe just asks seller to CONFIRM
+    const individual = { first_name: firstName, last_name: lastName, email };
+    if (phone) individual.phone = phone;
+    if (dob_day && dob_month && dob_year) {
+      individual.dob = { day: parseInt(dob_day), month: parseInt(dob_month), year: parseInt(dob_year) };
+    }
+    if (address_line1 && address_city && address_zip) {
+      individual.address = {
+        line1:       address_line1,
+        city:        address_city,
+        state:       address_state || 'CO',
+        postal_code: address_zip,
+        country:     'US'
+      };
+    }
 
     const account = await stripe.accounts.create({
-      type: 'express',
+      type:          'express',
+      country:       'US',
       email,
-      capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
       business_type: 'individual',
-      individual: { first_name: firstName, last_name: lastName, email },
-      settings: { payouts: { schedule: { interval: 'manual' } } },
-      metadata: { seller_name: name }
+      individual,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers:     { requested: true }
+      },
+      business_profile: {
+        // Pre-fill so Stripe does not ask for these during onboarding
+        url:                 process.env.BASE_URL || 'https://www.durangobikeproject.com',
+        mcc:                 '5941', // Sporting Goods Stores
+        product_description: 'Used cycling gear and bikes sold through Durango Bike Project marketplace'
+      },
+      settings: {
+        payouts: { schedule: { interval: 'manual' } }
+      },
+      metadata: { seller_name: name, seller_email: email }
     });
 
+    // fields: 'currently_due' = shortest possible flow
+    // only asks for what Stripe absolutely requires right now
     const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?reauth=true`,
+      account:     account.id,
+      refresh_url: `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?reauth=true&account=${account.id}`,
       return_url:  `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?onboarded=true&account=${account.id}`,
-      type: 'account_onboarding',
-      collection_options: { fields: 'eventually_due', future_requirements: 'omit' }
+      type:        'account_onboarding',
+      collection_options: {
+        fields:              'currently_due', // shortest flow — only what is required now
+        future_requirements: 'omit'           // do not front-load future requirements
+      }
     });
 
     res.json({ url: accountLink.url, accountId: account.id });
