@@ -51,64 +51,54 @@ db.exec(`
 `);
 
 // ── SPLITS ──
-// Durango Devo always gets 5%
-// DBP and seller split the remaining 95% based on price tier
-// Handling fee tiers for drop-off shipping service (in cents)
 const HANDLING_FEES = {
-  small:  1500,  // $15 — cassette, stem, small parts
-  medium: 2500,  // $25 — wheels, fork, groupset
-  large:  5000   // $50 — complete bike
+  small:  1500,
+  medium: 2500,
+  large:  5000
 };
 
-// Calculate split on ITEM PRICE ONLY — shipping passes through to seller
-// Commission: Seller 80%, DBP ~10% (covers Stripe), Devo 5%
-// DBP absorbs Stripe fees (~2.9% + $0.30) out of its ~15% cut
 function calculateSplit(itemPriceCents, shippingCents, listingType, dropoffTier) {
   shippingCents = shippingCents || 0;
   const totalCents = itemPriceCents + shippingCents;
 
-  // Stripe fee on full transaction (item + shipping)
   const stripeFee = Math.round(totalCents * 0.029 + 30);
 
   let sellerItemPct, dbpPct, devoPct;
 
   if (listingType === 'dbp') {
-    // DBP own inventory — no seller, 95% DBP, 5% Devo
     sellerItemPct = 0.00;
     dbpPct        = 0.95;
     devoPct       = 0.05;
   } else {
-    // Self-serve: 80% seller, 5% Devo, remainder to DBP (covers Stripe)
     sellerItemPct = 0.80;
-    dbpPct        = 0.15; // DBP gets 15% then pays Stripe from it
+    dbpPct        = 0.15;
     devoPct       = 0.05;
   }
 
-  // Handling fee deducted from seller payout if drop-off chosen
   const handlingFee = dropoffTier && dropoffTier !== 'self'
     ? (HANDLING_FEES[dropoffTier] || 0)
     : 0;
 
-  const devo         = Math.round(itemPriceCents * devoPct);
-  const sellerItem   = Math.round(itemPriceCents * sellerItemPct);
-  const sellerNet    = sellerItem + shippingCents - handlingFee; // seller gets item% + shipping passthrough - handling
-  const dbpGross     = itemPriceCents - sellerItem - devo;
-  const dbpNet       = dbpGross - stripeFee; // DBP absorbs Stripe
+  const devo       = Math.round(itemPriceCents * devoPct);
+  const sellerItem = Math.round(itemPriceCents * sellerItemPct);
+  const sellerNet  = sellerItem + shippingCents - handlingFee;
+  const dbpGross   = itemPriceCents - sellerItem - devo;
+  const dbpNet     = dbpGross - stripeFee;
 
   return {
-    itemPrice:    itemPriceCents / 100,
-    shipping:     shippingCents / 100,
-    total:        totalCents / 100,
-    sellerItem:   sellerItem / 100,
-    sellerNet:    sellerNet / 100,
-    devo:         devo / 100,
-    dbpGross:     dbpGross / 100,
-    dbpNet:       Math.max(dbpNet, 0) / 100,
-    stripeFee:    stripeFee / 100,
-    handlingFee:  handlingFee / 100,
-    sellerPct:    Math.round(sellerItemPct * 100),
-    dbpPct:       Math.round(dbpPct * 100),
-    devoPct:      Math.round(devoPct * 100)
+    itemPrice:   itemPriceCents / 100,
+    shipping:    shippingCents / 100,
+    total:       totalCents / 100,
+    sellerItem:  sellerItem / 100,
+    sellerNet:   sellerNet / 100,
+    devo:        devo / 100,
+    dbpGross:    dbpGross / 100,
+    dbpNet:      Math.max(dbpNet, 0) / 100,
+    stripeFee:   stripeFee / 100,
+    handlingFee: handlingFee / 100,
+    sellerPct:   Math.round(sellerItemPct * 100),
+    dbpPct:      Math.round(dbpPct * 100),
+    devoPct:     Math.round(devoPct * 100)
   };
 }
 
@@ -117,11 +107,9 @@ app.use(cors({
   origin: ['https://www.durangobikeproject.com', 'http://localhost:3000']
 }));
 
-// Raw body for Stripe webhooks
 app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
-// Photo uploads — stored in /uploads
 const uploadDir = './uploads';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
@@ -133,61 +121,45 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
     else cb(new Error('Images only'));
   }
 });
 
-// Serve uploaded photos publicly
 app.use('/uploads', express.static('./uploads'));
 
 // ── ROUTES ──
 
-// Health check
 app.get('/', (req, res) => res.json({ status: 'DBP Marketplace running' }));
 
 // ── SELLER ONBOARDING ──
-// Creates a Stripe Connect Express account and returns onboarding URL
 app.post('/seller/onboard', async (req, res) => {
   try {
     const { email, name } = req.body;
     if (!email || !name) return res.status(400).json({ error: 'Email and name required' });
 
-    // Parse first/last name
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0];
     const lastName  = nameParts.slice(1).join(' ') || '';
 
-    // Create Express connected account — pre-fill as much as possible
-    // so sellers only need to verify identity and enter bank info
     const account = await stripe.accounts.create({
       type: 'express',
       email,
       capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
       business_type: 'individual',
-      individual: {
-        first_name: firstName,
-        last_name:  lastName,
-        email
-      },
-      settings: {
-        payouts: { schedule: { interval: 'manual' } } // DBP controls payout timing
-      },
+      individual: { first_name: firstName, last_name: lastName, email },
+      settings: { payouts: { schedule: { interval: 'manual' } } },
       metadata: { seller_name: name }
     });
 
-    // Generate onboarding link — collection_options limits what Stripe asks for
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
       refresh_url: `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?reauth=true`,
       return_url:  `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?onboarded=true&account=${account.id}`,
       type: 'account_onboarding',
-      collection_options: {
-        fields: 'eventually_due', // only ask what's truly required
-        future_requirements: 'omit'
-      }
+      collection_options: { fields: 'eventually_due', future_requirements: 'omit' }
     });
 
     res.json({ url: accountLink.url, accountId: account.id });
@@ -197,7 +169,6 @@ app.post('/seller/onboard', async (req, res) => {
   }
 });
 
-// Check if seller account is fully onboarded
 app.get('/seller/status/:accountId', async (req, res) => {
   try {
     const account = await stripe.accounts.retrieve(req.params.accountId);
@@ -212,12 +183,13 @@ app.get('/seller/status/:accountId', async (req, res) => {
 
 // ── LISTINGS ──
 
-// Create a new listing (with photo upload)
+// ── FIX: All 13 values now correctly passed to match 13 ? placeholders ──
 app.post('/listings', upload.array('photos', 8), (req, res) => {
   try {
     const {
       seller_name, seller_email, stripe_account_id,
-      title, category, description, condition, price
+      title, category, description, condition, price,
+      listing_type, dropoff_tier, shipping_estimate
     } = req.body;
 
     if (!seller_name || !seller_email || !title || !price) {
@@ -228,32 +200,53 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
       return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     }
 
-    const { listing_type, dropoff_tier, shipping_estimate } = req.body;
-    const priceInCents = Math.round(parseFloat(price) * 100);
-    const shippingCents = Math.round(parseFloat(shipping_estimate || 0) * 100);
+    const priceInCents   = Math.round(parseFloat(price) * 100);
+    const shippingCents  = Math.round(parseFloat(shipping_estimate || 0) * 100);
+    const listingTypeSafe = listing_type || 'seller';
+    const dropoffTierSafe = dropoff_tier || 'self';
+
     if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1' });
 
     const photos = req.files ? req.files.map(f => '/uploads/' + f.filename) : [];
     const id = uuidv4();
-    const split = calculateSplit(priceInCents, listing_type);
+    const split = calculateSplit(priceInCents, shippingCents, listingTypeSafe, dropoffTierSafe);
 
     db.prepare(`
-      INSERT INTO listings (id, seller_name, seller_email, stripe_account_id, title, category, description, condition, price, shipping_estimate, photos, listing_type, dropoff_tier, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
-    `).run(id, seller_name, seller_email, stripe_account_id, title, category, description, condition, priceInCents, JSON.stringify(photos));
+      INSERT INTO listings (
+        id, seller_name, seller_email, stripe_account_id,
+        title, category, description, condition,
+        price, shipping_estimate, photos,
+        listing_type, dropoff_tier, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
+    `).run(
+      id,
+      seller_name,
+      seller_email,
+      stripe_account_id,
+      title,
+      category,
+      description,
+      condition,
+      priceInCents,
+      shippingCents,
+      JSON.stringify(photos),
+      listingTypeSafe,
+      dropoffTierSafe
+    );
 
     res.json({
       success: true,
       listingId: id,
       split: {
-        price: priceInCents / 100,
-        seller: split.seller / 100,
-        dbp: split.dbp / 100,
-        devo: split.devo / 100,
-        sellerPct: Math.round(split.sellerPct * 100),
-        dbpPct: Math.round(split.dbpPct * 100)
+        price:     priceInCents / 100,
+        seller:    split.sellerNet,
+        dbp:       split.dbpNet,
+        devo:      split.devo,
+        sellerPct: split.sellerPct,
+        dbpPct:    split.dbpPct,
+        devoPct:   split.devoPct
       },
-      message: 'Listing submitted for approval. We will review and publish within 24 hours.'
+      message: 'Listing submitted. We will review and publish within 24 hours.'
     });
   } catch (err) {
     console.error('Listing error:', err);
@@ -261,31 +254,29 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
   }
 });
 
-// Get all approved listings (public browse page)
 app.get('/listings', (req, res) => {
   try {
     const { category, maxPrice, condition } = req.query;
-    let query = "SELECT * FROM listings WHERE status = 'approved' ORDER BY created_at DESC";
-    const listings = db.prepare(query).all().map(l => ({
-      ...l,
-      photos: JSON.parse(l.photos || '[]'),
-      price: l.price / 100,
-      shipping_estimate: (l.shipping_estimate || 0) / 100,
-      split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier)
-    }));
 
-    let filtered = listings;
-    if (category) filtered = filtered.filter(l => l.category === category);
-    if (maxPrice) filtered = filtered.filter(l => l.price <= parseFloat(maxPrice));
-    if (condition) filtered = filtered.filter(l => l.condition === condition);
+    let listings = db.prepare("SELECT * FROM listings WHERE status = 'approved' ORDER BY created_at DESC").all()
+      .map(l => ({
+        ...l,
+        photos: JSON.parse(l.photos || '[]'),
+        price: l.price / 100,
+        shipping_estimate: (l.shipping_estimate || 0) / 100,
+        split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier)
+      }));
 
-    res.json({ success: true, listings: filtered });
+    if (category) listings = listings.filter(l => l.category === category);
+    if (maxPrice) listings = listings.filter(l => l.price <= parseFloat(maxPrice));
+    if (condition) listings = listings.filter(l => l.condition === condition);
+
+    res.json({ success: true, listings });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get single listing
 app.get('/listings/:id', (req, res) => {
   try {
     const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND status = 'approved'").get(req.params.id);
@@ -300,10 +291,7 @@ app.get('/listings/:id', (req, res) => {
   }
 });
 
-// Admin routes removed — listings auto-approved on submission
-
 // ── CHECKOUT ──
-// Create Stripe payment intent with automatic split
 app.post('/checkout', async (req, res) => {
   try {
     const { listingId, buyerEmail, deliveryType } = req.body;
@@ -313,14 +301,9 @@ app.post('/checkout', async (req, res) => {
 
     const shippingCents = listing.shipping_estimate || 0;
     const split = calculateSplit(listing.price, shippingCents, listing.listing_type, listing.dropoff_tier);
-
-    // Total charge = item price + shipping
     const totalCharge = listing.price + shippingCents;
-
-    // Seller transfer = 80% of item price + shipping - handling fee
     const sellerTransferCents = Math.round(split.sellerNet * 100);
 
-    // Create payment intent with automatic transfer to seller
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalCharge,
       currency: 'usd',
@@ -333,16 +316,25 @@ app.post('/checkout', async (req, res) => {
       },
       transfer_data: {
         destination: listing.stripe_account_id,
-        amount: split.seller
+        amount: sellerTransferCents
       }
     });
 
-    // Record sale
     const saleId = uuidv4();
     db.prepare(`
       INSERT INTO sales (id, listing_id, buyer_email, payment_intent_id, amount, seller_payout, dbp_payout, devo_payout, delivery_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(saleId, listingId, buyerEmail, paymentIntent.id, listing.price, split.seller, split.dbp, split.devo, deliveryType || 'shipping');
+    `).run(
+      saleId,
+      listingId,
+      buyerEmail,
+      paymentIntent.id,
+      listing.price,
+      Math.round(split.sellerNet * 100),
+      Math.round(split.dbpNet * 100),
+      Math.round(split.devo * 100),
+      deliveryType || 'shipping'
+    );
 
     res.json({
       success: true,
@@ -354,9 +346,9 @@ app.post('/checkout', async (req, res) => {
         photos: JSON.parse(listing.photos || '[]')
       },
       split: {
-        seller: split.seller / 100,
-        dbp: split.dbp / 100,
-        devo: split.devo / 100
+        seller: split.sellerNet,
+        dbp:    split.dbpNet,
+        devo:   split.devo
       }
     });
   } catch (err) {
@@ -379,28 +371,20 @@ app.post('/webhook', async (req, res) => {
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object;
     const listingId = pi.metadata.listingId;
-
-    // Mark listing as sold
     db.prepare("UPDATE listings SET status = 'sold', sold_at = datetime('now') WHERE id = ?").run(listingId);
     db.prepare("UPDATE sales SET status = 'delivered' WHERE payment_intent_id = ?").run(pi.id);
-    console.log('Payment confirmed, 72hr buyer window started:', listingId);
+    console.log('Payment confirmed, listing marked sold:', listingId);
   }
-
-  // charge.updated or manual: release payout 72hrs after delivery
-  // In production wire this to your shipping carrier webhook or a cron job
-  // For now payout is held via Stripe's transfer delay settings
 
   res.json({ received: true });
 });
 
-// ── CRON-STYLE: release payouts 72hrs after delivery ──
-// Call this endpoint from a Railway cron or external scheduler every hour
+// ── ADMIN: RELEASE PAYOUTS ──
 app.post('/admin/release-payouts', async (req, res) => {
   const { adminKey } = req.body;
   if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    // Find sales delivered 72+ hours ago that haven't been paid out
     const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
     const pending = db.prepare(
       "SELECT s.*, l.stripe_account_id, l.title FROM sales s JOIN listings l ON s.listing_id = l.id WHERE s.status = 'delivered' AND s.created_at < ?"
@@ -409,7 +393,6 @@ app.post('/admin/release-payouts', async (req, res) => {
     let released = 0;
     for (const sale of pending) {
       try {
-        // Transfer Devo share
         if (process.env.DEVO_ACCOUNT_ID && sale.devo_payout > 0) {
           await stripe.transfers.create({
             amount: sale.devo_payout,
@@ -418,7 +401,6 @@ app.post('/admin/release-payouts', async (req, res) => {
             description: 'Durango Devo — ' + sale.listing_id
           });
         }
-        // Mark as paid out
         db.prepare("UPDATE sales SET status = 'paid_out' WHERE id = ?").run(sale.id);
         released++;
       } catch(err) {
@@ -437,8 +419,8 @@ app.get('/split/:price', (req, res) => {
   if (isNaN(priceInCents) || priceInCents < 100) {
     return res.status(400).json({ error: 'Invalid price' });
   }
-  const listingType  = req.query.type     || 'seller';
-  const dropoffTier  = req.query.dropoff  || 'self';
+  const listingType   = req.query.type     || 'seller';
+  const dropoffTier   = req.query.dropoff  || 'self';
   const shippingCents = Math.round(parseFloat(req.query.shipping || 0) * 100);
   const split = calculateSplit(priceInCents, shippingCents, listingType, dropoffTier);
   res.json({
@@ -459,8 +441,7 @@ app.get('/split/:price', (req, res) => {
 
 app.listen(PORT, () => console.log(`DBP Marketplace running on port ${PORT}`));
 
-// ── AUTO PAYOUT — runs every hour inside the server process ──
-// Finds sales delivered 72+ hours ago and releases seller payouts
+// ── AUTO PAYOUT — runs every hour ──
 async function releasePayouts() {
   try {
     const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
@@ -484,13 +465,11 @@ async function releasePayouts() {
         console.error(`Payout failed for sale ${sale.id}:`, err.message);
       }
     }
-
     if (pending.length > 0) console.log(`Released ${pending.length} payout(s)`);
   } catch(err) {
     console.error('releasePayouts error:', err.message);
   }
 }
 
-// Run once on startup, then every hour
 releasePayouts();
 setInterval(releasePayouts, 60 * 60 * 1000);
