@@ -155,21 +155,39 @@ app.post('/seller/onboard', async (req, res) => {
     const { email, name } = req.body;
     if (!email || !name) return res.status(400).json({ error: 'Email and name required' });
 
-    // Create Express connected account
+    // Parse first/last name
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName  = nameParts.slice(1).join(' ') || '';
+
+    // Create Express connected account — pre-fill as much as possible
+    // so sellers only need to verify identity and enter bank info
     const account = await stripe.accounts.create({
       type: 'express',
       email,
       capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
       business_type: 'individual',
+      individual: {
+        first_name: firstName,
+        last_name:  lastName,
+        email
+      },
+      settings: {
+        payouts: { schedule: { interval: 'manual' } } // DBP controls payout timing
+      },
       metadata: { seller_name: name }
     });
 
-    // Generate onboarding link
+    // Generate onboarding link — collection_options limits what Stripe asks for
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace/sell?reauth=true`,
-      return_url:  `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace/sell?onboarded=true&account=${account.id}`,
-      type: 'account_onboarding'
+      refresh_url: `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?reauth=true`,
+      return_url:  `${process.env.BASE_URL || 'https://www.durangobikeproject.com'}/marketplace-sell?onboarded=true&account=${account.id}`,
+      type: 'account_onboarding',
+      collection_options: {
+        fields: 'eventually_due', // only ask what's truly required
+        future_requirements: 'omit'
+      }
     });
 
     res.json({ url: accountLink.url, accountId: account.id });
