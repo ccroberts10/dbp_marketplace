@@ -247,7 +247,7 @@ app.post('/seller/magic-link', async (req, res) => {
     db.prepare("INSERT INTO seller_sessions (id, email, token, expires_at) VALUES (?, ?, ?, ?)")
       .run(uuidv4(), email.toLowerCase().trim(), token, expiresAt);
 
-    const link = `${BASE_URL}/marketplace-seller?token=${token}`;
+    const link = `${BASE_URL}/marketplace-seller-portal?token=${token}`;
 
     await sendEmail(email, 'Your DBP Seller Portal Login Link', emailTemplate(
       'Seller Portal Access',
