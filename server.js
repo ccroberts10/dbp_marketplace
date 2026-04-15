@@ -60,11 +60,9 @@ const HANDLING_FEES = {
 function calculateSplit(itemPriceCents, shippingCents, listingType, dropoffTier) {
   shippingCents = shippingCents || 0;
   const totalCents = itemPriceCents + shippingCents;
-
   const stripeFee = Math.round(totalCents * 0.029 + 30);
 
   let sellerItemPct, dbpPct, devoPct;
-
   if (listingType === 'dbp') {
     sellerItemPct = 0.00;
     dbpPct        = 0.95;
@@ -106,7 +104,6 @@ function calculateSplit(itemPriceCents, shippingCents, listingType, dropoffTier)
 app.use(cors({
   origin: ['https://www.durangobikeproject.com', 'http://localhost:3000']
 }));
-
 app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
@@ -127,11 +124,9 @@ const upload = multer({
     else cb(new Error('Images only'));
   }
 });
-
 app.use('/uploads', express.static('./uploads'));
 
 // ── ROUTES ──
-
 app.get('/', (req, res) => res.json({ status: 'DBP Marketplace running' }));
 
 // ── SELLER ONBOARDING ──
@@ -182,8 +177,6 @@ app.get('/seller/status/:accountId', async (req, res) => {
 });
 
 // ── LISTINGS ──
-
-// ── FIX: All 13 values now correctly passed to match 13 ? placeholders ──
 app.post('/listings', upload.array('photos', 8), (req, res) => {
   try {
     const {
@@ -192,41 +185,52 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
       listing_type, dropoff_tier, shipping_estimate
     } = req.body;
 
+    // Validate required fields
     if (!seller_name || !seller_email || !title || !price) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'Missing required fields: seller_name, seller_email, title, price' });
     }
-
     if (!stripe_account_id) {
       return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     }
 
-    const priceInCents   = Math.round(parseFloat(price) * 100);
-    const shippingCents  = Math.round(parseFloat(shipping_estimate || 0) * 100);
-    const listingTypeSafe = listing_type || 'seller';
-    const dropoffTierSafe = dropoff_tier || 'self';
+    const priceInCents    = Math.round(parseFloat(price) * 100);
+    const shippingCents   = Math.round(parseFloat(shipping_estimate || 0) * 100);
+    const listingTypeSafe = listing_type  || 'seller';
+    const dropoffTierSafe = dropoff_tier  || 'self';
+    const categorySafe    = category      || 'Other';
+    const descriptionSafe = description   || '';
+    const conditionSafe   = condition     || 'Good';
 
-    if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1' });
+    if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1.00' });
 
     const photos = req.files ? req.files.map(f => '/uploads/' + f.filename) : [];
-    const id = uuidv4();
-    const split = calculateSplit(priceInCents, shippingCents, listingTypeSafe, dropoffTierSafe);
+    const id     = uuidv4();
+    const split  = calculateSplit(priceInCents, shippingCents, listingTypeSafe, dropoffTierSafe);
 
-    db.prepare(`
+    // 13 ? placeholders + hardcoded 'approved' = 14 columns, 13 bound values
+    const stmt = db.prepare(`
       INSERT INTO listings (
         id, seller_name, seller_email, stripe_account_id,
         title, category, description, condition,
         price, shipping_estimate, photos,
         listing_type, dropoff_tier, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
-    `).run(
+      ) VALUES (
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, 'approved'
+      )
+    `);
+
+    stmt.run(
       id,
-      seller_name,
-      seller_email,
-      stripe_account_id,
-      title,
-      category,
-      description,
-      condition,
+      seller_name.trim(),
+      seller_email.trim(),
+      stripe_account_id.trim(),
+      title.trim(),
+      categorySafe,
+      descriptionSafe,
+      conditionSafe,
       priceInCents,
       shippingCents,
       JSON.stringify(photos),
@@ -246,7 +250,7 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
         dbpPct:    split.dbpPct,
         devoPct:   split.devoPct
       },
-      message: 'Listing submitted. We will review and publish within 24 hours.'
+      message: 'Listing submitted and live.'
     });
   } catch (err) {
     console.error('Listing error:', err);
@@ -257,7 +261,6 @@ app.post('/listings', upload.array('photos', 8), (req, res) => {
 app.get('/listings', (req, res) => {
   try {
     const { category, maxPrice, condition } = req.query;
-
     let listings = db.prepare("SELECT * FROM listings WHERE status = 'approved' ORDER BY created_at DESC").all()
       .map(l => ({
         ...l,
@@ -295,7 +298,6 @@ app.get('/listings/:id', (req, res) => {
 app.post('/checkout', async (req, res) => {
   try {
     const { listingId, buyerEmail, deliveryType } = req.body;
-
     const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND status = 'approved'").get(listingId);
     if (!listing) return res.status(404).json({ error: 'Listing not found or unavailable' });
 
@@ -309,9 +311,9 @@ app.post('/checkout', async (req, res) => {
       currency: 'usd',
       receipt_email: buyerEmail,
       metadata: {
-        listingId: listing.id,
+        listingId:    listing.id,
         listingTitle: listing.title,
-        sellerEmail: listing.seller_email,
+        sellerEmail:  listing.seller_email,
         deliveryType: deliveryType || 'shipping'
       },
       transfer_data: {
@@ -325,10 +327,7 @@ app.post('/checkout', async (req, res) => {
       INSERT INTO sales (id, listing_id, buyer_email, payment_intent_id, amount, seller_payout, dbp_payout, devo_payout, delivery_type)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      saleId,
-      listingId,
-      buyerEmail,
-      paymentIntent.id,
+      saleId, listingId, buyerEmail, paymentIntent.id,
       listing.price,
       Math.round(split.sellerNet * 100),
       Math.round(split.dbpNet * 100),
@@ -341,15 +340,11 @@ app.post('/checkout', async (req, res) => {
       clientSecret: paymentIntent.client_secret,
       publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
       listing: {
-        title: listing.title,
-        price: listing.price / 100,
+        title:  listing.title,
+        price:  listing.price / 100,
         photos: JSON.parse(listing.photos || '[]')
       },
-      split: {
-        seller: split.sellerNet,
-        dbp:    split.dbpNet,
-        devo:   split.devo
-      }
+      split: { seller: split.sellerNet, dbp: split.dbpNet, devo: split.devo }
     });
   } catch (err) {
     console.error('Checkout error:', err);
@@ -361,7 +356,6 @@ app.post('/checkout', async (req, res) => {
 app.post('/webhook', async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
-
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
@@ -419,8 +413,8 @@ app.get('/split/:price', (req, res) => {
   if (isNaN(priceInCents) || priceInCents < 100) {
     return res.status(400).json({ error: 'Invalid price' });
   }
-  const listingType   = req.query.type     || 'seller';
-  const dropoffTier   = req.query.dropoff  || 'self';
+  const listingType   = req.query.type    || 'seller';
+  const dropoffTier   = req.query.dropoff || 'self';
   const shippingCents = Math.round(parseFloat(req.query.shipping || 0) * 100);
   const split = calculateSplit(priceInCents, shippingCents, listingType, dropoffTier);
   res.json({
@@ -437,6 +431,36 @@ app.get('/split/:price', (req, res) => {
     dbpPct:      split.dbpPct,
     devoPct:     split.devoPct
   });
+});
+
+// ── ADMIN: LIST ALL LISTINGS (including sold/pending) ──
+app.get('/admin/listings', (req, res) => {
+  const { adminKey } = req.query;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const listings = db.prepare("SELECT * FROM listings ORDER BY created_at DESC").all()
+      .map(l => ({
+        ...l,
+        photos: JSON.parse(l.photos || '[]'),
+        price: l.price / 100,
+        shipping_estimate: (l.shipping_estimate || 0) / 100
+      }));
+    res.json({ success: true, listings });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMIN: UPDATE LISTING STATUS ──
+app.patch('/admin/listings/:id', (req, res) => {
+  const { adminKey, status } = req.body;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    db.prepare("UPDATE listings SET status = ? WHERE id = ?").run(status, req.params.id);
+    res.json({ success: true });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, () => console.log(`DBP Marketplace running on port ${PORT}`));
