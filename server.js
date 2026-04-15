@@ -107,8 +107,8 @@ app.use(cors({
 app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
-const uploadDir = './uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+const uploadDir = process.env.UPLOAD_DIR || './uploads';
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -124,7 +124,7 @@ const upload = multer({
     else cb(new Error('Images only'));
   }
 });
-app.use('/uploads', express.static('./uploads'));
+app.use('/uploads', express.static(uploadDir));
 
 // ── ROUTES ──
 app.get('/', (req, res) => res.json({ status: 'DBP Marketplace running' }));
