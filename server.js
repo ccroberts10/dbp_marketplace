@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { Resend } = require('resend');
+const { S3Client, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +17,17 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = 'marketplace@durangobikeproject.com';
 const NOTIFY_EMAIL = 'durangobikeproject@gmail.com';
 const CONCIERGE_CAPACITY = parseInt(process.env.CONCIERGE_CAPACITY || '10');
+
+// ── R2 BACKUP CLIENT ──
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId:     process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+  }
+});
+const R2_BUCKET = process.env.R2_BUCKET || 'dbp-marketplace-backups';
 
 // ── DATABASE ──
 const DB_PATH = process.env.DB_PATH || './marketplace.db';
@@ -1062,6 +1074,97 @@ app.get('/split/:price', (req, res) => {
   res.json({ price: split.itemPrice, shipping: split.shipping, total: split.total, seller: split.sellerItem, sellerNet: split.sellerNet, devo: split.devo, staff: split.staff, dbp: split.dbpNet, stripeFee: split.stripeFee, handlingFee: split.handlingFee, sellerPct: split.sellerPct, dbpPct: split.dbpPct, devoPct: split.devoPct, staffPct: split.staffPct });
 });
 
+// ── BACKUP ──
+async function runBackup() {
+  try {
+    if (!process.env.R2_ENDPOINT || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) {
+      console.log('Backup skipped — R2 credentials not configured');
+      return { success: false, reason: 'R2 not configured' };
+    }
+
+    // Read the SQLite DB file as a buffer
+    const dbBuffer  = fs.readFileSync(DB_PATH);
+    const now       = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const key       = `backups/${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/marketplace-${timestamp}.db`;
+
+    await r2.send(new PutObjectCommand({
+      Bucket:      R2_BUCKET,
+      Key:         key,
+      Body:        dbBuffer,
+      ContentType: 'application/octet-stream',
+      Metadata: {
+        timestamp:  now.toISOString(),
+        db_size:    String(dbBuffer.length),
+        listing_count: String(db.prepare("SELECT COUNT(*) as c FROM listings").get().c),
+        sale_count:    String(db.prepare("SELECT COUNT(*) as c FROM sales").get().c)
+      }
+    }));
+
+    console.log(`✓ Backup uploaded: ${key} (${(dbBuffer.length / 1024).toFixed(1)} KB)`);
+
+    // Also notify you by email once a week (Sundays)
+    if (now.getDay() === 0) {
+      const listingCount = db.prepare("SELECT COUNT(*) as c FROM listings").get().c;
+      const saleCount    = db.prepare("SELECT COUNT(*) as c FROM sales").get().c;
+      const paidOut      = db.prepare("SELECT SUM(seller_payout) as t FROM sales WHERE status = 'paid_out'").get().t || 0;
+      await sendEmail(NOTIFY_EMAIL, 'DBP Marketplace — Weekly Backup Report', emailTemplate(
+        'Weekly Backup ✓',
+        `<p style="font-size:15px;color:#2a1f0e;line-height:1.7;margin:0 0 16px;">Your marketplace database was backed up successfully.</p>
+         <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
+           <p style="font-size:14px;color:#2a1f0e;margin:0 0 8px;"><strong>Backup file:</strong> ${key}</p>
+           <p style="font-size:14px;color:#2a1f0e;margin:0 0 8px;"><strong>DB size:</strong> ${(dbBuffer.length / 1024).toFixed(1)} KB</p>
+           <p style="font-size:14px;color:#2a1f0e;margin:0 0 8px;"><strong>Total listings:</strong> ${listingCount}</p>
+           <p style="font-size:14px;color:#2a1f0e;margin:0 0 8px;"><strong>Total sales:</strong> ${saleCount}</p>
+           <p style="font-size:14px;color:#2a1f0e;margin:0;"><strong>Total paid out:</strong> $${(paidOut/100).toFixed(2)}</p>
+         </div>
+         <p style="font-size:13px;color:#8a7a65;">Backups stored at: Cloudflare R2 → ${R2_BUCKET}</p>`
+      ));
+    }
+
+    return { success: true, key, size: dbBuffer.length };
+  } catch(err) {
+    console.error('Backup error:', err.message);
+    await sendEmail(NOTIFY_EMAIL, '⚠ DBP Marketplace Backup Failed', emailTemplate(
+      'Backup Failed',
+      `<p style="font-size:15px;color:#c0531a;margin:0 0 16px;">The automated backup failed. Please check your R2 credentials and bucket.</p>
+       <p style="font-size:13px;color:#5a4a35;font-family:monospace;background:#e8dcc8;padding:12px;">${err.message}</p>`
+    ));
+    return { success: false, error: err.message };
+  }
+}
+
+// ── ADMIN: MANUAL BACKUP ──
+app.post('/admin/backup', async (req, res) => {
+  const { adminKey } = req.body;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  const result = await runBackup();
+  res.json(result);
+});
+
+// ── ADMIN: LIST BACKUPS ──
+app.get('/admin/backups', async (req, res) => {
+  const { adminKey } = req.query;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const response = await r2.send(new ListObjectsV2Command({
+      Bucket: R2_BUCKET,
+      Prefix: 'backups/',
+      MaxKeys: 50
+    }));
+    const files = (response.Contents || [])
+      .sort((a, b) => new Date(b.LastModified) - new Date(a.LastModified))
+      .map(f => ({
+        key:          f.Key,
+        size:         (f.Size / 1024).toFixed(1) + ' KB',
+        lastModified: f.LastModified
+      }));
+    res.json({ success: true, count: files.length, backups: files });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`DBP Marketplace running on port ${PORT}`));
 
 // ── AUTO PAYOUT ──
@@ -1089,3 +1192,19 @@ async function releasePayouts() {
 }
 
 setTimeout(() => { releasePayouts(); setInterval(releasePayouts, 60 * 60 * 1000); }, 15000);
+
+// ── NIGHTLY BACKUP — runs at 2am MT every day ──
+function scheduleNightlyBackup() {
+  const now     = new Date();
+  const next2am = new Date();
+  next2am.setHours(9, 0, 0, 0); // 2am MT = 9am UTC
+  if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
+  const msUntil2am = next2am - now;
+  console.log(`Next backup scheduled in ${Math.round(msUntil2am / 1000 / 60)} minutes`);
+  setTimeout(() => {
+    runBackup();
+    setInterval(runBackup, 24 * 60 * 60 * 1000); // then every 24 hours
+  }, msUntil2am);
+}
+
+scheduleNightlyBackup();
