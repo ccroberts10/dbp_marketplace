@@ -806,7 +806,9 @@ app.post('/checkout', async (req, res) => {
     const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND status = 'approved'").get(listingId);
     if (!listing) return res.status(404).json({ error: 'Listing not found or no longer available' });
 
-    const shippingCents       = listing.shipping_estimate || 0;
+    const shippingCents       = (deliveryType === 'pickup' || deliveryType === 'detour')
+      ? 0
+      : (listing.shipping_estimate || 0);
     const split               = calculateSplit(listing.price, shippingCents, listing.listing_type, listing.dropoff_tier);
     const totalCharge         = listing.price + shippingCents;
     const sellerTransferCents = Math.round(split.sellerNet * 100);
@@ -997,7 +999,13 @@ app.post('/webhook', async (req, res) => {
          <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
            <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Your payout</p>
            <p style="font-size:28px;font-weight:700;color:#1d3a2e;margin:0;">$${(sale.seller_payout/100).toFixed(2)}</p>
-           <p style="font-size:12px;color:#8a7a65;margin:8px 0 0;">Transferred automatically 72 hours after delivery confirmation.</p>
+           <p style="font-size:12px;color:#8a7a65;margin:8px 0 0;">${
+             sale.delivery_type === 'pickup'
+               ? '📍 Buyer will pick up at DBP. Please drop off within 5 days.'
+               : sale.delivery_type === 'detour'
+               ? '🚲 Detour delivery selected. Please drop off at DBP within 5 days.'
+               : 'Transferred automatically 72 hours after delivery confirmation.'
+           }</p>
          </div>`
       ));
 
