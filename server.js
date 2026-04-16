@@ -54,6 +54,7 @@ db.exec(`
     dbp_payout INTEGER,
     devo_payout INTEGER,
     staff_payout INTEGER DEFAULT 0,
+    staff_commission_paid INTEGER DEFAULT 0,
     delivery_type TEXT,
     status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now'))
@@ -73,7 +74,6 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    stripe_account_id TEXT,
     active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now'))
   );
@@ -121,12 +121,14 @@ db.exec(`
   `ALTER TABLE listings ADD COLUMN staff_id TEXT`,
   `ALTER TABLE listings ADD COLUMN concierge_status TEXT DEFAULT NULL`,
   `ALTER TABLE sales ADD COLUMN staff_payout INTEGER DEFAULT 0`,
+  `ALTER TABLE sales ADD COLUMN staff_commission_paid INTEGER DEFAULT 0`,
   `ALTER TABLE seller_sessions ADD COLUMN role TEXT DEFAULT 'seller'`,
+  // Remove Stripe account from staff if upgrading — no longer needed
 ].forEach(sql => { try { db.exec(sql); } catch(e) {} });
 
 // ── SPLITS ──
 // seller:    80% seller / 15% DBP / 5% Devo
-// concierge: 65% seller / 23% DBP / 7% staff / 5% Devo
+// concierge: 65% seller / 23% DBP / 7% staff (payroll) / 5% Devo
 // dbp:       95% DBP / 5% Devo
 const HANDLING_FEES = { small: 1500, medium: 2500, large: 5000 };
 
@@ -153,13 +155,21 @@ function calculateSplit(itemPriceCents, shippingCents, listingType, dropoffTier)
   const dbpNet      = Math.max(dbpGross - stripeFee, 0);
 
   return {
-    itemPrice: itemPriceCents / 100, shipping: shippingCents / 100,
-    total: totalCents / 100, sellerItem: sellerItem / 100,
-    sellerNet: sellerNet / 100, devo: devo / 100, staff: staff / 100,
-    dbpGross: dbpGross / 100, dbpNet: dbpNet / 100,
-    stripeFee: stripeFee / 100, handlingFee: handlingFee / 100,
-    sellerPct: Math.round(sellerPct * 100), dbpPct: Math.round(dbpPct * 100),
-    devoPct: Math.round(devoPct * 100), staffPct: Math.round(staffPct * 100)
+    itemPrice:   itemPriceCents / 100,
+    shipping:    shippingCents / 100,
+    total:       totalCents / 100,
+    sellerItem:  sellerItem / 100,
+    sellerNet:   sellerNet / 100,
+    devo:        devo / 100,
+    staff:       staff / 100,
+    dbpGross:    dbpGross / 100,
+    dbpNet:      dbpNet / 100,
+    stripeFee:   stripeFee / 100,
+    handlingFee: handlingFee / 100,
+    sellerPct:   Math.round(sellerPct * 100),
+    dbpPct:      Math.round(dbpPct * 100),
+    devoPct:     Math.round(devoPct * 100),
+    staffPct:    Math.round(staffPct * 100)
   };
 }
 
@@ -170,8 +180,18 @@ app.use(express.json());
 
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-const storage = multer.diskStorage({ destination: uploadDir, filename: (req, file, cb) => cb(null, uuidv4() + path.extname(file.originalname)) });
-const upload  = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: (req, file, cb) => { if (file.mimetype.startsWith('image/')) cb(null, true); else cb(new Error('Images only')); } });
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => cb(null, uuidv4() + path.extname(file.originalname))
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Images only'));
+  }
+});
 app.use('/uploads', express.static(uploadDir));
 
 // ── EMAIL HELPERS ──
@@ -324,26 +344,56 @@ app.get('/seller/portal', (req, res) => {
     if (!session || session.role !== 'seller') return res.status(401).json({ error: 'Invalid session' });
     if (new Date(session.expires_at) < new Date()) return res.status(401).json({ error: 'Session expired' });
 
-    const email    = session.email;
+    const email = session.email;
+
+    // All listings including concierge in all states
     const listings = db.prepare("SELECT * FROM listings WHERE seller_email = ? ORDER BY created_at DESC").all(email)
-      .map(l => ({ ...l, photos: JSON.parse(l.photos || '[]'), price: l.price / 100, shipping_estimate: (l.shipping_estimate || 0) / 100, split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier) }));
+      .map(l => ({
+        ...l,
+        photos: JSON.parse(l.photos || '[]'),
+        price: l.price / 100,
+        shipping_estimate: (l.shipping_estimate || 0) / 100,
+        split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier)
+      }));
+
     const sales = db.prepare("SELECT s.*, l.title, l.photos FROM sales s JOIN listings l ON s.listing_id = l.id WHERE l.seller_email = ? ORDER BY s.created_at DESC").all(email)
-      .map(s => ({ ...s, photos: JSON.parse(s.photos || '[]'), amount: s.amount / 100, seller_payout: s.seller_payout / 100, dbp_payout: s.dbp_payout / 100, devo_payout: s.devo_payout / 100 }));
+      .map(s => ({
+        ...s,
+        photos: JSON.parse(s.photos || '[]'),
+        amount: s.amount / 100,
+        seller_payout: s.seller_payout / 100,
+        dbp_payout: s.dbp_payout / 100,
+        devo_payout: s.devo_payout / 100
+      }));
+
     const offers = db.prepare("SELECT o.*, l.title, l.price as list_price, l.photos FROM offers o JOIN listings l ON o.listing_id = l.id WHERE l.seller_email = ? AND o.status IN ('pending','countered') ORDER BY o.created_at DESC").all(email)
-      .map(o => ({ ...o, photos: JSON.parse(o.photos || '[]'), amount: o.amount / 100, list_price: o.list_price / 100, counter_amount: o.counter_amount ? o.counter_amount / 100 : null }));
+      .map(o => ({
+        ...o,
+        photos: JSON.parse(o.photos || '[]'),
+        amount: o.amount / 100,
+        list_price: o.list_price / 100,
+        counter_amount: o.counter_amount ? o.counter_amount / 100 : null
+      }));
+
     const threads = db.prepare("SELECT m.*, l.title as listing_title FROM messages m JOIN listings l ON m.listing_id = l.id WHERE l.seller_email = ? OR m.from_email = ? ORDER BY m.created_at DESC").all(email, email);
+
+    // Concierge items in progress (not yet live)
+    const conciergeInProgress = listings.filter(l =>
+      l.listing_type === 'concierge' && ['pending_intake','in_progress'].includes(l.status)
+    );
 
     res.json({
       success: true,
       seller: { email, name: listings[0]?.seller_name || email },
       stats: {
-        totalEarned:    sales.filter(s => s.status === 'paid_out').reduce((sum, s) => sum + s.seller_payout, 0),
-        pendingPayout:  sales.filter(s => s.status === 'delivered').reduce((sum, s) => sum + s.seller_payout, 0),
-        activeListings: listings.filter(l => l.status === 'approved').length,
-        soldListings:   listings.filter(l => l.status === 'sold').length,
-        totalViews:     listings.reduce((sum, l) => sum + (l.view_count || 0), 0)
+        totalEarned:         sales.filter(s => s.status === 'paid_out').reduce((sum, s) => sum + s.seller_payout, 0),
+        pendingPayout:       sales.filter(s => s.status === 'delivered').reduce((sum, s) => sum + s.seller_payout, 0),
+        activeListings:      listings.filter(l => l.status === 'approved').length,
+        soldListings:        listings.filter(l => l.status === 'sold').length,
+        totalViews:          listings.reduce((sum, l) => sum + (l.view_count || 0), 0),
+        conciergeInProgress: conciergeInProgress.length
       },
-      listings, sales, offers, threads
+      listings, sales, offers, threads, conciergeInProgress
     });
   } catch(err) {
     console.error('Portal error:', err);
@@ -365,22 +415,45 @@ app.get('/staff/portal', (req, res) => {
 
     const queue = db.prepare("SELECT * FROM listings WHERE listing_type = 'concierge' AND status = 'pending_intake' ORDER BY created_at ASC").all()
       .map(l => ({ ...l, photos: JSON.parse(l.photos || '[]'), price: l.price / 100 }));
+
     const inProgress = db.prepare("SELECT * FROM listings WHERE listing_type = 'concierge' AND staff_id = ? AND status = 'in_progress' ORDER BY created_at ASC").all(staffMember.id)
       .map(l => ({ ...l, photos: JSON.parse(l.photos || '[]'), price: l.price / 100 }));
-    const completed = db.prepare("SELECT l.*, s.staff_payout, s.status as sale_status FROM listings l LEFT JOIN sales s ON s.listing_id = l.id WHERE l.staff_id = ? AND l.status IN ('approved','sold') ORDER BY l.created_at DESC").all(staffMember.id)
-      .map(l => ({ ...l, photos: JSON.parse(l.photos || '[]'), price: l.price / 100, staff_payout: l.staff_payout ? l.staff_payout / 100 : null }));
+
+    // Completed: join sales to get payout amounts and commission_paid status
+    const completed = db.prepare(`
+      SELECT l.*, s.staff_payout, s.staff_commission_paid, s.status as sale_status, s.created_at as sold_at_ts
+      FROM listings l
+      LEFT JOIN sales s ON s.listing_id = l.id
+      WHERE l.staff_id = ? AND l.status IN ('approved','sold')
+      ORDER BY l.created_at DESC
+    `).all(staffMember.id).map(l => ({
+      ...l,
+      photos: JSON.parse(l.photos || '[]'),
+      price: l.price / 100,
+      staff_payout: l.staff_payout ? l.staff_payout / 100 : null
+    }));
+
+    // Unpaid commissions — items sold but commission not yet included in payroll
+    const unpaidCommissions = completed.filter(l =>
+      l.status === 'sold' && l.staff_payout > 0 && !l.staff_commission_paid
+    );
+    const unpaidTotal = unpaidCommissions.reduce((sum, l) => sum + (l.staff_payout || 0), 0);
+
+    // All-time paid commissions
+    const paidTotal = completed.filter(l => l.staff_commission_paid)
+      .reduce((sum, l) => sum + (l.staff_payout || 0), 0);
 
     res.json({
       success: true,
-      staff: { id: staffMember.id, name: staffMember.name, email: staffMember.email, stripeReady: !!staffMember.stripe_account_id },
+      staff: { id: staffMember.id, name: staffMember.name, email: staffMember.email },
       stats: {
         queueCount:      queue.length,
         inProgressCount: inProgress.length,
         completedCount:  completed.filter(l => l.status === 'sold').length,
-        totalEarned:     completed.filter(l => l.sale_status === 'paid_out').reduce((sum, l) => sum + (l.staff_payout || 0), 0),
-        pendingEarned:   completed.filter(l => l.sale_status === 'delivered').reduce((sum, l) => sum + (l.staff_payout || 0), 0)
+        unpaidTotal,
+        paidTotal
       },
-      queue, inProgress, completed
+      queue, inProgress, completed, unpaidCommissions
     });
   } catch(err) {
     console.error('Staff portal error:', err);
@@ -397,13 +470,14 @@ app.post('/staff/claim/:listingId', (req, res) => {
     const staffMember = db.prepare("SELECT * FROM staff WHERE email = ?").get(session.email);
     if (!staffMember) return res.status(404).json({ error: 'Staff not found' });
     const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND status = 'pending_intake'").get(req.params.listingId);
-    if (!listing) return res.status(404).json({ error: 'Item not available' });
+    if (!listing) return res.status(404).json({ error: 'Item not available — may have been claimed by someone else' });
     db.prepare("UPDATE listings SET status = 'in_progress', staff_id = ?, concierge_status = 'claimed' WHERE id = ?").run(staffMember.id, req.params.listingId);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── STAFF: PUBLISH ──
+// BUG FIX #2: price from form is dollars, listing.price from DB is cents
 app.post('/staff/publish/:listingId', upload.array('photos', 8), async (req, res) => {
   try {
     const { token, title, description, price, condition, category, shipping_estimate } = req.body;
@@ -414,19 +488,40 @@ app.post('/staff/publish/:listingId', upload.array('photos', 8), async (req, res
     const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND staff_id = ? AND status = 'in_progress'").get(req.params.listingId, staffMember.id);
     if (!listing) return res.status(404).json({ error: 'Listing not found or not claimed by you' });
 
-    const photos        = req.files && req.files.length > 0 ? req.files.map(f => '/uploads/' + f.filename) : JSON.parse(listing.photos || '[]');
-    const priceInCents  = Math.round(parseFloat(price || listing.price) * 100);
+    const photos = req.files && req.files.length > 0
+      ? req.files.map(f => '/uploads/' + f.filename)
+      : JSON.parse(listing.photos || '[]');
+
+    // BUG FIX #2: price from form is in dollars; listing.price from DB is already in cents
+    const priceInCents  = price
+      ? Math.round(parseFloat(price) * 100)
+      : listing.price; // already cents — do NOT multiply again
     const shippingCents = Math.round(parseFloat(shipping_estimate || 0) * 100);
 
-    db.prepare(`UPDATE listings SET title=?, description=?, price=?, condition=?, category=?, shipping_estimate=?, photos=?, status='approved', concierge_status='listed', listing_type='concierge' WHERE id=?`).run(
-      title || listing.title, description || listing.description,
-      priceInCents, condition || listing.condition, category || listing.category,
-      shippingCents, JSON.stringify(photos), req.params.listingId
+    if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1.00' });
+    if (!photos.length) return res.status(400).json({ error: 'At least one photo is required' });
+
+    db.prepare(`
+      UPDATE listings SET
+        title = ?, description = ?, price = ?, condition = ?, category = ?,
+        shipping_estimate = ?, photos = ?, status = 'approved',
+        concierge_status = 'listed', listing_type = 'concierge'
+      WHERE id = ?
+    `).run(
+      title || listing.title,
+      description || listing.description,
+      priceInCents,
+      condition || listing.condition,
+      category || listing.category,
+      shippingCents,
+      JSON.stringify(photos),
+      req.params.listingId
     );
 
     const updated = db.prepare("SELECT * FROM listings WHERE id = ?").get(req.params.listingId);
     await fireListingAlerts(updated);
 
+    // Email seller — item is live
     await sendEmail(listing.seller_email, `Your ${updated.title} is now live!`, emailTemplate('Your Item is Listed!',
       `<p style="font-size:15px;color:#2a1f0e;line-height:1.7;margin:0 0 16px;">Hi ${listing.seller_name}, your item has been photographed and is now live on the DBP Marketplace.</p>
        <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
@@ -441,34 +536,6 @@ app.post('/staff/publish/:listingId', upload.array('photos', 8), async (req, res
     console.error('Publish error:', err);
     res.status(500).json({ error: err.message });
   }
-});
-
-// ── STAFF: STRIPE ONBOARDING ──
-app.post('/staff/onboard', async (req, res) => {
-  try {
-    const { token } = req.body;
-    const session = db.prepare("SELECT * FROM seller_sessions WHERE token = ? AND used = 1").get(token);
-    if (!session || session.role !== 'staff') return res.status(401).json({ error: 'Unauthorized' });
-    const staffMember = db.prepare("SELECT * FROM staff WHERE email = ?").get(session.email);
-    if (!staffMember) return res.status(404).json({ error: 'Staff not found' });
-
-    const account = await stripe.accounts.create({
-      type: 'express', country: 'US', email: staffMember.email,
-      business_type: 'individual', individual: { email: staffMember.email },
-      capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-      business_profile: { url: BASE_URL, mcc: '5941', product_description: 'DBP staff commission payouts' },
-      settings: { payouts: { schedule: { interval: 'manual' } } }
-    });
-    const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `${BASE_URL}/concierge-portal?reauth=true`,
-      return_url:  `${BASE_URL}/concierge-portal?stripe_done=true`,
-      type: 'account_onboarding',
-      collection_options: { fields: 'currently_due', future_requirements: 'omit' }
-    });
-    db.prepare("UPDATE staff SET stripe_account_id = ? WHERE id = ?").run(account.id, staffMember.id);
-    res.json({ url: accountLink.url });
-  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── ADMIN: STAFF MANAGEMENT ──
@@ -486,7 +553,86 @@ app.get('/admin/staff', (req, res) => {
   const { adminKey } = req.query;
   if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    res.json({ success: true, staff: db.prepare("SELECT id, name, email, active, stripe_account_id FROM staff").all() });
+    res.json({ success: true, staff: db.prepare("SELECT id, name, email, active FROM staff").all() });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ADMIN: STAFF COMMISSION REPORT (run monthly for payroll) ──
+app.get('/admin/staff-commissions', (req, res) => {
+  const { adminKey, from, to } = req.query;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    // Default: current month if no dates provided
+    const now       = new Date();
+    const fromDate  = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const toDate    = to   || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const rows = db.prepare(`
+      SELECT
+        st.id as staff_id, st.name, st.email,
+        COUNT(s.id) as sales_count,
+        SUM(s.staff_payout) as total_payout_cents,
+        GROUP_CONCAT(l.title || ' ($' || ROUND(l.price/100.0,2) || ')') as items
+      FROM sales s
+      JOIN listings l ON s.listing_id = l.id
+      JOIN staff st ON l.staff_id = st.id
+      WHERE s.status IN ('delivered','paid_out')
+        AND s.staff_commission_paid = 0
+        AND DATE(s.created_at) BETWEEN ? AND ?
+        AND s.staff_payout > 0
+      GROUP BY st.id
+    `).all(fromDate, toDate);
+
+    const report = rows.map(r => ({
+      staffId:    r.staff_id,
+      name:       r.name,
+      email:      r.email,
+      salesCount: r.sales_count,
+      totalOwed:  (r.total_payout_cents || 0) / 100,
+      items:      r.items
+    }));
+
+    const grandTotal = report.reduce((sum, r) => sum + r.totalOwed, 0);
+
+    res.json({
+      success:   true,
+      period:    { from: fromDate, to: toDate },
+      grandTotal,
+      report
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ADMIN: MARK COMMISSIONS PAID (run after payroll) ──
+app.post('/admin/staff-commissions/mark-paid', (req, res) => {
+  const { adminKey, staffId, from, to } = req.body;
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const now      = new Date();
+    const fromDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const toDate   = to   || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    let result;
+    if (staffId) {
+      // Mark paid for one staff member
+      result = db.prepare(`
+        UPDATE sales SET staff_commission_paid = 1
+        WHERE staff_commission_paid = 0
+          AND staff_payout > 0
+          AND DATE(created_at) BETWEEN ? AND ?
+          AND listing_id IN (SELECT id FROM listings WHERE staff_id = ?)
+      `).run(fromDate, toDate, staffId);
+    } else {
+      // Mark paid for all staff
+      result = db.prepare(`
+        UPDATE sales SET staff_commission_paid = 1
+        WHERE staff_commission_paid = 0
+          AND staff_payout > 0
+          AND DATE(created_at) BETWEEN ? AND ?
+      `).run(fromDate, toDate);
+    }
+
+    res.json({ success: true, markedPaid: result.changes, period: { from: fromDate, to: toDate } });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -514,8 +660,16 @@ app.post('/listings', upload.array('photos', 8), async (req, res) => {
     const id     = uuidv4();
     const status = isConcierge ? 'pending_intake' : 'approved';
 
-    db.prepare(`INSERT INTO listings (id, seller_name, seller_email, stripe_account_id, title, category, description, condition, price, shipping_estimate, photos, listing_type, dropoff_tier, status, concierge_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      id, seller_name.trim(), seller_email.trim(), stripe_account_id?.trim() || '',
+    // BUG FIX #1: store NULL not empty string for missing stripe_account_id
+    const stripeId = (stripe_account_id && stripe_account_id.trim() !== '')
+      ? stripe_account_id.trim()
+      : null;
+
+    db.prepare(`
+      INSERT INTO listings (id, seller_name, seller_email, stripe_account_id, title, category, description, condition, price, shipping_estimate, photos, listing_type, dropoff_tier, status, concierge_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, seller_name.trim(), seller_email.trim(), stripeId,
       title.trim(), category || 'Other', description || '', condition || 'Good',
       priceInCents, shippingCents, JSON.stringify(photos), typeSafe, dropoffSafe, status,
       isConcierge ? 'pending_intake' : null
@@ -555,7 +709,13 @@ app.get('/listings', (req, res) => {
   try {
     const { category, maxPrice, condition } = req.query;
     let listings = db.prepare("SELECT * FROM listings WHERE status = 'approved' ORDER BY created_at DESC").all()
-      .map(l => ({ ...l, photos: JSON.parse(l.photos || '[]'), price: l.price / 100, shipping_estimate: (l.shipping_estimate || 0) / 100, split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier) }));
+      .map(l => ({
+        ...l,
+        photos: JSON.parse(l.photos || '[]'),
+        price: l.price / 100,
+        shipping_estimate: (l.shipping_estimate || 0) / 100,
+        split: calculateSplit(l.price, l.shipping_estimate || 0, l.listing_type, l.dropoff_tier)
+      }));
     if (category) listings = listings.filter(l => l.category === category);
     if (maxPrice) listings = listings.filter(l => l.price <= parseFloat(maxPrice));
     if (condition) listings = listings.filter(l => l.condition === condition);
@@ -624,6 +784,7 @@ app.get('/alerts/unsubscribe', (req, res) => {
 });
 
 // ── CHECKOUT ──
+// BUG FIX #1: check stripe_account_id is not null/empty before creating transfer
 app.post('/checkout', async (req, res) => {
   try {
     const { listingId, buyerEmail, deliveryType } = req.body;
@@ -636,17 +797,34 @@ app.post('/checkout', async (req, res) => {
     const sellerTransferCents = Math.round(split.sellerNet * 100);
 
     const piParams = {
-      amount: totalCharge, currency: 'usd', receipt_email: buyerEmail,
-      metadata: { listingId: listing.id, listingTitle: listing.title, sellerEmail: listing.seller_email, deliveryType: deliveryType || 'shipping', staffId: listing.staff_id || '' }
+      amount:        totalCharge,
+      currency:      'usd',
+      receipt_email: buyerEmail,
+      metadata: {
+        listingId:    listing.id,
+        listingTitle: listing.title,
+        sellerEmail:  listing.seller_email,
+        deliveryType: deliveryType || 'shipping',
+        staffId:      listing.staff_id || null
+      }
     };
-    if (listing.stripe_account_id) {
-      piParams.transfer_data = { destination: listing.stripe_account_id, amount: sellerTransferCents };
+
+    // BUG FIX #1: only add transfer_data if stripe_account_id is a real value
+    const hasStripeAccount = listing.stripe_account_id && listing.stripe_account_id.trim() !== '';
+    if (hasStripeAccount) {
+      piParams.transfer_data = {
+        destination: listing.stripe_account_id,
+        amount:      sellerTransferCents
+      };
     }
 
     const paymentIntent = await stripe.paymentIntents.create(piParams);
 
     const saleId = uuidv4();
-    db.prepare("INSERT INTO sales (id, listing_id, buyer_email, payment_intent_id, amount, seller_payout, dbp_payout, devo_payout, staff_payout, delivery_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+    db.prepare(`
+      INSERT INTO sales (id, listing_id, buyer_email, payment_intent_id, amount, seller_payout, dbp_payout, devo_payout, staff_payout, delivery_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
       saleId, listingId, buyerEmail, paymentIntent.id,
       listing.price,
       Math.round(split.sellerNet * 100),
@@ -657,10 +835,11 @@ app.post('/checkout', async (req, res) => {
     );
 
     res.json({
-      success: true, clientSecret: paymentIntent.client_secret,
+      success:        true,
+      clientSecret:   paymentIntent.client_secret,
       publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-      listing: { title: listing.title, price: listing.price / 100, photos: JSON.parse(listing.photos || '[]') },
-      split: { seller: split.sellerNet, dbp: split.dbpNet, devo: split.devo, staff: split.staff }
+      listing:        { title: listing.title, price: listing.price / 100, photos: JSON.parse(listing.photos || '[]') },
+      split:          { seller: split.sellerNet, dbp: split.dbpNet, devo: split.devo, staff: split.staff }
     });
   } catch(err) {
     console.error('Checkout error:', err);
@@ -682,11 +861,14 @@ app.post('/offers', async (req, res) => {
     await sendEmail(listing.seller_email, `New offer on your ${listing.title}`, emailTemplate('You Have a New Offer',
       `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;">Hi ${listing.seller_name}, <strong>${buyerName || buyerEmail}</strong> made an offer on <strong>${listing.title}</strong>.</p>
        <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
-         <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Listed price</p><p style="font-size:24px;font-weight:700;color:#1d3a2e;margin:0 0 12px;">$${(listing.price/100).toFixed(0)}</p>
-         <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Offer</p><p style="font-size:24px;font-weight:700;color:#c0531a;margin:0;">$${parseFloat(amount).toFixed(2)}</p>
+         <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Listed price</p>
+         <p style="font-size:24px;font-weight:700;color:#1d3a2e;margin:0 0 12px;">$${(listing.price/100).toFixed(0)}</p>
+         <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Offer</p>
+         <p style="font-size:24px;font-weight:700;color:#c0531a;margin:0;">$${parseFloat(amount).toFixed(2)}</p>
          ${message ? `<p style="font-size:13px;color:#5a4a35;margin:12px 0 0;font-style:italic;">"${message}"</p>` : ''}
        </div>
-       <a href="${BASE_URL}/marketplace-seller-portal" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Respond in Portal →</a>`));
+       <a href="${BASE_URL}/marketplace-seller-portal" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Respond in Portal →</a>`
+    ));
     await sendEmail(NOTIFY_EMAIL, `[DBP] New offer on ${listing.title}`, `Offer: $${amount} from ${buyerEmail}`);
     res.json({ success: true, offerId: id });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -700,27 +882,33 @@ app.post('/offers/:id/respond', async (req, res) => {
     const offer = db.prepare("SELECT o.*, l.title, l.seller_email, l.seller_name, l.price as list_price FROM offers o JOIN listings l ON o.listing_id = l.id WHERE o.id = ?").get(req.params.id);
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
     if (offer.seller_email !== session.email) return res.status(403).json({ error: 'Unauthorized' });
+
     if (action === 'accept') {
       db.prepare("UPDATE offers SET status = 'accepted', updated_at = datetime('now') WHERE id = ?").run(offer.id);
       await sendEmail(offer.buyer_email, `Your offer on ${offer.title} was accepted!`, emailTemplate('Offer Accepted 🎉',
         `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;">Your offer of <strong>$${(offer.amount/100).toFixed(2)}</strong> on <strong>${offer.title}</strong> was accepted.</p>
-         <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Complete Purchase →</a>`));
+         <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Complete Purchase →</a>`
+      ));
     } else if (action === 'counter') {
       if (!counterAmount) return res.status(400).json({ error: 'Counter amount required' });
       db.prepare("UPDATE offers SET status = 'countered', counter_amount = ?, counter_message = ?, updated_at = datetime('now') WHERE id = ?").run(Math.round(parseFloat(counterAmount) * 100), counterMessage || '', offer.id);
       await sendEmail(offer.buyer_email, `Counter offer on ${offer.title}`, emailTemplate('Counter Offer Received',
         `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;">The seller countered your offer on <strong>${offer.title}</strong>.</p>
          <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
-           <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Your offer</p><p style="font-size:20px;font-weight:700;color:#5a4a35;margin:0 0 12px;">$${(offer.amount/100).toFixed(2)}</p>
-           <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Counter offer</p><p style="font-size:24px;font-weight:700;color:#c0531a;margin:0;">$${parseFloat(counterAmount).toFixed(2)}</p>
+           <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Your offer</p>
+           <p style="font-size:20px;font-weight:700;color:#5a4a35;margin:0 0 12px;">$${(offer.amount/100).toFixed(2)}</p>
+           <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Counter offer</p>
+           <p style="font-size:24px;font-weight:700;color:#c0531a;margin:0;">$${parseFloat(counterAmount).toFixed(2)}</p>
            ${counterMessage ? `<p style="font-size:13px;color:#5a4a35;margin:12px 0 0;font-style:italic;">"${counterMessage}"</p>` : ''}
          </div>
-         <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View Listing →</a>`));
+         <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View Listing →</a>`
+      ));
     } else if (action === 'decline') {
       db.prepare("UPDATE offers SET status = 'declined', updated_at = datetime('now') WHERE id = ?").run(offer.id);
       await sendEmail(offer.buyer_email, `Update on your offer for ${offer.title}`, emailTemplate('Offer Update',
         `<p style="font-size:15px;color:#2a1f0e;margin:0 0 20px;">The seller declined your offer on <strong>${offer.title}</strong>.</p>
-         <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Browse Marketplace →</a>`));
+         <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Browse Marketplace →</a>`
+      ));
     }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -738,16 +926,22 @@ app.post('/messages', async (req, res) => {
     if (fromRole === 'buyer') {
       await sendEmail(listing.seller_email, `New message about ${listing.title}`, emailTemplate('New Message',
         `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;"><strong>${fromName || fromEmail}</strong> asked about <strong>${listing.title}</strong>:</p>
-         <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;border-left:3px solid #c0531a;"><p style="font-size:15px;color:#2a1f0e;margin:0;">"${body}"</p></div>
-         <a href="${BASE_URL}/marketplace-seller-portal" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Reply in Portal →</a>`));
+         <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;border-left:3px solid #c0531a;">
+           <p style="font-size:15px;color:#2a1f0e;margin:0;">"${body}"</p>
+         </div>
+         <a href="${BASE_URL}/marketplace-seller-portal" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Reply in Portal →</a>`
+      ));
       await sendEmail(NOTIFY_EMAIL, `[DBP] Message on ${listing.title}`, `From: ${fromEmail}\n${body}`);
     } else {
       const buyerMsg = db.prepare("SELECT from_email FROM messages WHERE listing_id = ? AND from_role = 'buyer' ORDER BY created_at ASC LIMIT 1").get(listingId);
       if (buyerMsg) {
         await sendEmail(buyerMsg.from_email, `Reply about ${listing.title}`, emailTemplate('Message from Seller',
           `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;">The seller replied about <strong>${listing.title}</strong>:</p>
-           <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;border-left:3px solid #1d3a2e;"><p style="font-size:15px;color:#2a1f0e;margin:0;">"${body}"</p></div>
-           <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View Listing →</a>`));
+           <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;border-left:3px solid #1d3a2e;">
+             <p style="font-size:15px;color:#2a1f0e;margin:0;">"${body}"</p>
+           </div>
+           <a href="${BASE_URL}/marketplace" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View Listing →</a>`
+        ));
       }
     }
     res.json({ success: true, messageId: id });
@@ -782,26 +976,30 @@ app.post('/webhook', async (req, res) => {
     const sale    = db.prepare("SELECT * FROM sales WHERE payment_intent_id = ?").get(pi.id);
 
     if (listing && sale) {
+      // Email seller
       await sendEmail(listing.seller_email, `Your ${listing.title} sold! 🎉`, emailTemplate('Item Sold!',
         `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;">Hi ${listing.seller_name}, your <strong>${listing.title}</strong> just sold!</p>
          <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
            <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Your payout</p>
            <p style="font-size:28px;font-weight:700;color:#1d3a2e;margin:0;">$${(sale.seller_payout/100).toFixed(2)}</p>
            <p style="font-size:12px;color:#8a7a65;margin:8px 0 0;">Transferred automatically 72 hours after delivery confirmation.</p>
-         </div>`));
+         </div>`
+      ));
 
-      if (staffId) {
+      // Email staff — commission accrued (payroll, not Stripe)
+      if (staffId && sale.staff_payout > 0) {
         const staffMember = db.prepare("SELECT * FROM staff WHERE id = ?").get(staffId);
-        if (staffMember && sale.staff_payout > 0) {
-          await sendEmail(staffMember.email, `Commission earned — ${listing.title} sold!`, emailTemplate('You Earned a Commission! 🎉',
+        if (staffMember) {
+          await sendEmail(staffMember.email, `Commission earned — ${listing.title} sold!`, emailTemplate('Commission Earned 🎉',
             `<p style="font-size:15px;color:#2a1f0e;margin:0 0 16px;">Hi ${staffMember.name}, an item you listed just sold!</p>
              <div style="background:#e8dcc8;padding:16px 20px;margin-bottom:20px;">
                <p style="font-size:18px;font-weight:700;color:#1d3a2e;margin:0 0 8px;">${listing.title}</p>
                <p style="font-size:13px;color:#8a7a65;margin:0 0 4px;">Your commission (7%)</p>
                <p style="font-size:28px;font-weight:700;color:#c0531a;margin:0;">$${(sale.staff_payout/100).toFixed(2)}</p>
-               <p style="font-size:12px;color:#8a7a65;margin:8px 0 0;">Paid out 72 hours after delivery confirmation.</p>
+               <p style="font-size:12px;color:#8a7a65;margin:8px 0 0;">Paid monthly through DBP payroll.</p>
              </div>
-             <a href="${BASE_URL}/concierge-portal" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View in Portal →</a>`));
+             <a href="${BASE_URL}/concierge-portal" style="display:inline-block;background:#c0531a;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View in Portal →</a>`
+          ));
         }
       }
     }
@@ -820,15 +1018,18 @@ app.post('/admin/release-payouts', async (req, res) => {
     let released  = 0;
     for (const sale of pending) {
       try {
+        // Devo payout via Stripe
         if (process.env.DEVO_ACCOUNT_ID && sale.devo_payout > 0) {
-          await stripe.transfers.create({ amount: sale.devo_payout, currency: 'usd', destination: process.env.DEVO_ACCOUNT_ID, description: 'Durango Devo — ' + sale.listing_id, idempotency_key: `devo-${sale.id}` });
+          await stripe.transfers.create({
+            amount:          sale.devo_payout,
+            currency:        'usd',
+            destination:     process.env.DEVO_ACCOUNT_ID,
+            description:     'Durango Devo — ' + sale.listing_id,
+            idempotency_key: `devo-${sale.id}`
+          });
         }
-        if (sale.staff_id && sale.staff_payout > 0) {
-          const staffMember = db.prepare("SELECT * FROM staff WHERE id = ?").get(sale.staff_id);
-          if (staffMember?.stripe_account_id) {
-            await stripe.transfers.create({ amount: sale.staff_payout, currency: 'usd', destination: staffMember.stripe_account_id, description: `Staff commission — ${sale.listing_id}`, idempotency_key: `staff-${sale.id}` });
-          }
-        }
+        // BUG FIX #5: staff commission is payroll — no Stripe transfer, just mark delivered
+        // Commission is paid separately via /admin/staff-commissions/mark-paid after payroll runs
         db.prepare("UPDATE sales SET status = 'paid_out' WHERE id = ?").run(sale.id);
         released++;
       } catch(err) { console.error('Payout error', sale.id, err.message); }
@@ -871,14 +1072,15 @@ async function releasePayouts() {
     for (const sale of pending) {
       try {
         if (process.env.DEVO_ACCOUNT_ID && sale.devo_payout > 0) {
-          await stripe.transfers.create({ amount: sale.devo_payout, currency: 'usd', destination: process.env.DEVO_ACCOUNT_ID, description: 'Durango Devo — ' + sale.listing_id, idempotency_key: `devo-${sale.id}` });
+          await stripe.transfers.create({
+            amount:          sale.devo_payout,
+            currency:        'usd',
+            destination:     process.env.DEVO_ACCOUNT_ID,
+            description:     'Durango Devo — ' + sale.listing_id,
+            idempotency_key: `devo-${sale.id}`
+          });
         }
-        if (sale.staff_id && sale.staff_payout > 0) {
-          const staffMember = db.prepare("SELECT * FROM staff WHERE id = ?").get(sale.staff_id);
-          if (staffMember?.stripe_account_id) {
-            await stripe.transfers.create({ amount: sale.staff_payout, currency: 'usd', destination: staffMember.stripe_account_id, description: `Staff commission — ${sale.listing_id}`, idempotency_key: `staff-${sale.id}` });
-          }
-        }
+        // Staff commission tracked in DB, paid via payroll — no Stripe transfer here
         db.prepare("UPDATE sales SET status = 'paid_out' WHERE id = ?").run(sale.id);
         console.log(`Payout released: ${sale.id}`);
       } catch(err) { console.error(`Payout failed: ${sale.id}`, err.message); }
