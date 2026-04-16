@@ -186,7 +186,10 @@ function calculateSplit(itemPriceCents, shippingCents, listingType, dropoffTier)
 }
 
 // ── MIDDLEWARE ──
-app.use(cors({ origin: ['https://www.durangobikeproject.com', 'http://localhost:3000'] }));
+app.use(cors({
+  origin: (origin, callback) => callback(null, true),
+  credentials: true
+}));
 app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
@@ -316,7 +319,7 @@ app.post('/seller/magic-link', async (req, res) => {
     }
 
     const token     = uuidv4() + uuidv4();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     db.prepare("INSERT INTO seller_sessions (id, email, token, role, expires_at) VALUES (?, ?, ?, ?, ?)").run(uuidv4(), emailClean, token, isStaff ? 'staff' : 'seller', expiresAt);
 
     const portalPath = isStaff ? '/concierge-portal' : '/marketplace-seller-portal';
