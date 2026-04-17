@@ -671,6 +671,7 @@ app.post('/checkout', async (req, res) => {
 
     const piParams = {
       amount: totalCharge, currency: 'usd', receipt_email: buyerEmail,
+      payment_method_types: ['card'],
       metadata: { listingId: listing.id, listingTitle: listing.title, sellerEmail: listing.seller_email, deliveryType: deliveryType || 'shipping', staffId: listing.staff_id || '' }
     };
 
