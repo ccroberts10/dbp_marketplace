@@ -277,6 +277,22 @@ app.get('/seller/portal', (req, res) => {
   } catch(err) { console.error('Portal error:', err); res.status(500).json({ error: err.message }); }
 });
 
+// ── SELLER: REMOVE OWN LISTING ──
+app.delete('/seller/listings/:id', (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(401).json({ error: 'Token required' });
+    const session = db.prepare("SELECT * FROM seller_sessions WHERE token = ? AND used = 1").get(token);
+    if (!session || session.role !== 'seller') return res.status(401).json({ error: 'Invalid session' });
+    if (new Date(session.expires_at) < new Date()) return res.status(401).json({ error: 'Session expired' });
+    const listing = db.prepare("SELECT * FROM listings WHERE id = ? AND seller_email = ?").get(req.params.id, session.email);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    if (listing.status === 'sold') return res.status(400).json({ error: 'Cannot remove a sold listing' });
+    db.prepare("UPDATE listings SET status = 'removed' WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/staff/portal', (req, res) => {
   try {
     const { token } = req.query;
