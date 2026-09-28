@@ -281,17 +281,17 @@ app.get('/seller/status/:accountId', async (req, res) => {
 });
 
 // Magic link auth — seller only (no staff role in GoodKit)
-app.post('/seller/magic-link', async (req, res) => {
+app.post('/seller/magic-link', async (req, res) => handleMagicLink(req, res));
+app.post('/seller/auth/request',  async (req, res) => handleMagicLink(req, res));
+async function handleMagicLink(req, res) {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });
     const emailClean = email.toLowerCase().trim();
-    const hasListings = db.prepare("SELECT id FROM listings WHERE seller_email = ? LIMIT 1").get(emailClean);
-    if (!hasListings) return res.status(404).json({ error: 'No seller account found for this email.' });
     const token     = uuidv4() + uuidv4();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     db.prepare("INSERT INTO seller_sessions (id, email, token, role, expires_at) VALUES (?, ?, ?, 'seller', ?)").run(uuidv4(), emailClean, token, expiresAt);
-    const link = `${BASE_URL}/seller-portal?token=${token}`;
+    const link = `${BASE_URL}/sell?token=${token}`;
     await sendEmail(email, 'Your GoodKit Seller Portal Login', emailTemplate('Seller Portal Access',
       `<p style="font-size:15px;color:#1A1A14;line-height:1.7;margin:0 0 20px;">Click below to access your seller portal. Link expires in 30 minutes.</p>
        <a href="${link}" style="display:inline-block;background:#FF5C1A;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">Access Portal →</a>
