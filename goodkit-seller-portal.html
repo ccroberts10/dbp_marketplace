@@ -338,9 +338,10 @@ let SESSION=null, SELLER=null, photoFiles=[];
 
 (async function init(){
   const p=new URLSearchParams(window.location.search), tok=p.get('token');
+  const onboarded=p.get('onboarded'), accountId=p.get('account');
+  window.history.replaceState({},'',window.location.pathname);
   if(tok){
     // Magic link token — must verify first to get a session token
-    window.history.replaceState({},'',window.location.pathname);
     try{
       const r=await fetch(API+'/seller/auth/verify?token='+encodeURIComponent(tok));
       const d=await r.json();
@@ -348,7 +349,17 @@ let SESSION=null, SELLER=null, photoFiles=[];
       else showLogin();
     }catch(e){ showLogin(); }
   } else {
-    const s=tryGet(); if(s) loadDash(s); else showLogin();
+    const s=tryGet();
+    if(s){
+      if(onboarded && accountId){
+        // Stripe returned after onboarding — save account ID to listings
+        try{
+          await fetch(API+'/seller/stripe-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:s,stripe_account_id:accountId})});
+        }catch(e){}
+        showToast('Stripe connected!','success');
+      }
+      loadDash(s);
+    } else showLogin();
   }
 })();
 
@@ -414,8 +425,17 @@ function renderStripeBanner(){
 }
 
 async function connectStripe(){
+  // Need a real name for Stripe — prompt if we don't have one
+  let sellerName = (SELLER.name && SELLER.name !== SELLER.email) ? SELLER.name : '';
+  if(!sellerName){
+    sellerName = window.prompt('Enter your full name for Stripe payouts:','');
+    if(!sellerName || !sellerName.trim()) return;
+    sellerName = sellerName.trim();
+    // ensure last name exists — Stripe requires first + last
+    if(sellerName.indexOf(' ')===-1) sellerName = sellerName + ' Seller';
+  }
   try{
-    const r=await fetch(API+'/seller/onboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:SELLER.email,seller_name:SELLER.name||SELLER.email})});
+    const r=await fetch(API+'/seller/onboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:SELLER.email,name:sellerName})});
     const d=await r.json();
     if(d.url) window.location.href=d.url;
     else showToast(d.error||'Could not connect Stripe','error');

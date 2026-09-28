@@ -274,6 +274,18 @@ app.post('/seller/onboard', async (req, res) => {
   } catch(err) { console.error('Onboard error:', err); res.status(500).json({ error: err.message }); }
 });
 
+// Save Stripe account ID to seller's listings after onboarding
+app.post('/seller/stripe-account', (req, res) => {
+  try {
+    const { token, stripe_account_id } = req.body;
+    if (!token || !stripe_account_id) return res.status(400).json({ error: 'token and stripe_account_id required' });
+    const session = db.prepare("SELECT * FROM seller_sessions WHERE token=? AND used=1").get(token);
+    if (!session) return res.status(401).json({ error: 'Invalid session' });
+    db.prepare("UPDATE listings SET stripe_account_id=? WHERE seller_email=?").run(stripe_account_id, session.email);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/seller/status/:accountId', async (req, res) => {
   try {
     const account = await stripe.accounts.retrieve(req.params.accountId);
