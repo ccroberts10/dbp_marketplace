@@ -119,6 +119,7 @@ db.exec(`
   `ALTER TABLE sales ADD COLUMN label_cost INTEGER DEFAULT 0`,
   `ALTER TABLE sales ADD COLUMN platform_payout INTEGER DEFAULT 0`,
   `ALTER TABLE seller_sessions ADD COLUMN role TEXT DEFAULT 'seller'`,
+  `ALTER TABLE listings ADD COLUMN size TEXT DEFAULT ''`,
 ].forEach(sql => { try { db.exec(sql); } catch(e) {} });
 
 // ── SHIPPING LABEL TIERS ─────────────────────────────────────────────────────
@@ -372,7 +373,7 @@ app.get('/seller/portal', (req, res) => {
 
 app.post('/listings', upload.array('photos', 8), async (req, res) => {
   try {
-    const { seller_name, seller_email, stripe_account_id, title, category, description, condition, price, shipping_estimate, weight_oz } = req.body;
+    const { seller_name, seller_email, stripe_account_id, title, category, size, description, condition, price, shipping_estimate, weight_oz } = req.body;
     if (!seller_name || !seller_email || !title || !price) return res.status(400).json({ error: 'Missing required fields' });
     if (!stripe_account_id) return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     const priceInCents  = Math.round(parseFloat(price) * 100);
@@ -383,8 +384,8 @@ app.post('/listings', upload.array('photos', 8), async (req, res) => {
     if (!photos.length) return res.status(400).json({ error: 'At least one photo is required' });
     const id       = uuidv4();
     const stripeId = (stripe_account_id && stripe_account_id.trim() !== '') ? stripe_account_id.trim() : null;
-    db.prepare(`INSERT INTO listings (id,seller_name,seller_email,stripe_account_id,title,category,description,condition,price,shipping_estimate,weight_oz,photos,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'approved')`)
-      .run(id, seller_name.trim(), seller_email.trim(), stripeId, title.trim(), category || 'Other', description || '', condition || 'Good', priceInCents, shippingCents, weightOz, JSON.stringify(photos));
+    db.prepare(`INSERT INTO listings (id,seller_name,seller_email,stripe_account_id,title,category,size,description,condition,price,shipping_estimate,weight_oz,photos,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'approved')`)
+      .run(id, seller_name.trim(), seller_email.trim(), stripeId, title.trim(), category || 'Other', size || '', description || '', condition || 'Good', priceInCents, shippingCents, weightOz, JSON.stringify(photos));
     const newListing = db.prepare("SELECT * FROM listings WHERE id = ?").get(id);
     await fireListingAlerts(newListing);
     await sendEmail(NOTIFY_EMAIL, `[GoodKit] New listing: ${title}`, `Seller: ${seller_name} · ${seller_email}\nItem: ${title}\nPrice: $${priceInCents/100}\nWeight: ${weightOz}oz`);
@@ -691,10 +692,11 @@ app.patch('/listings/:id', (req, res) => {
     const listing = db.prepare("SELECT * FROM listings WHERE id=?").get(req.params.id);
     if (!listing) return res.status(404).json({ error: 'Listing not found' });
     if (listing.seller_email !== session.email) return res.status(403).json({ error: 'Unauthorized' });
-    const { price, category } = req.body;
+    const { price, category, size } = req.body;
     if (price !== undefined && (isNaN(price) || Number(price) < 1)) return res.status(400).json({ error: 'Invalid price' });
     if (price !== undefined) db.prepare("UPDATE listings SET price=? WHERE id=?").run(Math.round(Number(price) * 100), req.params.id);
     if (category !== undefined) db.prepare("UPDATE listings SET category=? WHERE id=?").run(category, req.params.id);
+    if (size !== undefined) db.prepare("UPDATE listings SET size=? WHERE id=?").run(size, req.params.id);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });

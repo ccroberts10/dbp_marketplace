@@ -218,11 +218,70 @@ nav{position:sticky;top:0;z-index:100;background:var(--ink);display:flex;align-i
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
-          <select class="form-select" id="newCat" required>
+          <select class="form-select" id="newCat" required onchange="updateSizeField()">
             <option value="">Select a category</option>
-            <option>Components</option><option>Apparel</option><option>Wheels</option>
-            <option>Helmets</option><option>Shoes</option><option>Bags &amp; Packs</option>
-            <option>Tools</option><option>Electronics</option><option>Other</option>
+            <optgroup label="Drivetrain">
+              <option>Chains</option><option>Cassettes</option><option>Chainrings</option>
+              <option>Derailleurs</option><option>Shifters</option><option>Cranks</option>
+              <option>Bottom Brackets</option><option>Cables &amp; Housing</option>
+            </optgroup>
+            <optgroup label="Brakes">
+              <option>Brake Levers</option><option>Brake Calipers</option>
+              <option>Rotors</option><option>Brake Pads</option><option>Brake Hoses</option>
+            </optgroup>
+            <optgroup label="Cockpit">
+              <option>Handlebars</option><option>Stems</option><option>Grips</option>
+              <option>Bar Tape</option><option>Headsets</option>
+            </optgroup>
+            <optgroup label="Wheels &amp; Tires">
+              <option>Wheels</option><option>Tires</option><option>Tubes</option>
+              <option>Hubs</option><option>Rims</option>
+            </optgroup>
+            <optgroup label="Suspension">
+              <option>Forks</option><option>Rear Shocks</option><option>Suspension Parts</option>
+            </optgroup>
+            <optgroup label="Saddle &amp; Seatpost">
+              <option>Saddles</option><option>Seatposts</option><option>Dropper Posts</option>
+            </optgroup>
+            <optgroup label="Pedals">
+              <option>Flat Pedals</option><option>Clipless Pedals</option>
+            </optgroup>
+            <optgroup label="Apparel">
+              <option>Jerseys</option><option>Bibs &amp; Shorts</option><option>Jackets</option>
+              <option>Base Layers</option><option>Socks</option><option>Gloves</option>
+            </optgroup>
+            <optgroup label="Protection &amp; Helmets">
+              <option>Helmets</option><option>Pads &amp; Protection</option>
+            </optgroup>
+            <optgroup label="Shoes">
+              <option>MTB Shoes</option><option>Road Shoes</option><option>Casual Cycling Shoes</option>
+            </optgroup>
+            <optgroup label="Eyewear">
+              <option>Sunglasses</option><option>Goggles</option>
+            </optgroup>
+            <optgroup label="Bags &amp; Packs">
+              <option>Hydration Packs</option><option>Frame Bags</option>
+              <option>Saddle Bags</option><option>Handlebar Bags</option><option>Backpacks</option>
+            </optgroup>
+            <optgroup label="Electronics &amp; Lighting">
+              <option>Bike Computers</option><option>GPS Units</option>
+              <option>Heart Rate Monitors</option><option>Power Meters</option>
+              <option>Lights</option><option>Sensors &amp; Accessories</option>
+            </optgroup>
+            <optgroup label="Tools &amp; Maintenance">
+              <option>Tools</option><option>Stands &amp; Workstands</option>
+              <option>Pumps</option><option>Lube &amp; Cleaners</option>
+            </optgroup>
+            <optgroup label="Frames &amp; Complete Bikes">
+              <option>Frames</option><option>Complete Bikes</option>
+            </optgroup>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group" id="sizeGroup" style="display:none;">
+          <label class="form-label">Size</label>
+          <select class="form-select" id="newSize">
+            <option value="">Select size</option>
           </select>
         </div>
         <div class="form-group">
@@ -407,11 +466,11 @@ function renderListings(listings){
       </div>
       <div class="listing-info">
         <div class="listing-title">${l.title}</div>
-        <div class="listing-meta">${l.category} · <span class="status-badge badge-${l.status==='active'?'active':'sold'}">${(l.status||'').toUpperCase()}</span></div>
+        <div class="listing-meta">${l.category}${l.size?' · '+l.size:''} · <span class="status-badge badge-${l.status==='active'?'active':'sold'}">${(l.status||'').toUpperCase()}</span></div>
       </div>
       <div class="listing-price">$${Number(l.price).toFixed(0)}</div>
       <div class="listing-actions">
-        <button class="btn btn-outline btn-xs" onclick="toggleEdit('${l.id}',${Number(l.price).toFixed(2)},'${(l.category||'').replace(/'/g,"\\'")}')">Edit</button>
+        <button class="btn btn-outline btn-xs" onclick="toggleEdit('${l.id}',${Number(l.price).toFixed(2)},'${(l.category||'').replace(/'/g,"\\'")}','${(l.size||'').replace(/'/g,"\\'")}')">Edit</button>
         <button class="btn btn-danger btn-xs" onclick="deleteListing('${l.id}','${(l.title||'').replace(/'/g,"\\'")}')">Delete</button>
       </div>
     </div>
@@ -423,10 +482,69 @@ function renderListings(listings){
         </div>
         <div>
           <div class="form-label" style="margin-bottom:4px;">Category</div>
-          <select class="form-select" id="ec-${l.id}" style="width:160px;">
-            <option>Components</option><option>Apparel</option><option>Wheels</option>
-            <option>Helmets</option><option>Shoes</option><option>Bags &amp; Packs</option>
-            <option>Tools</option><option>Electronics</option><option>Other</option>
+          <select class="form-select" id="ec-${l.id}" style="width:180px;" onchange="updateEditSize('${l.id}')">
+            <optgroup label="Drivetrain">
+              <option>Chains</option><option>Cassettes</option><option>Chainrings</option>
+              <option>Derailleurs</option><option>Shifters</option><option>Cranks</option>
+              <option>Bottom Brackets</option><option>Cables &amp; Housing</option>
+            </optgroup>
+            <optgroup label="Brakes">
+              <option>Brake Levers</option><option>Brake Calipers</option>
+              <option>Rotors</option><option>Brake Pads</option><option>Brake Hoses</option>
+            </optgroup>
+            <optgroup label="Cockpit">
+              <option>Handlebars</option><option>Stems</option><option>Grips</option>
+              <option>Bar Tape</option><option>Headsets</option>
+            </optgroup>
+            <optgroup label="Wheels &amp; Tires">
+              <option>Wheels</option><option>Tires</option><option>Tubes</option>
+              <option>Hubs</option><option>Rims</option>
+            </optgroup>
+            <optgroup label="Suspension">
+              <option>Forks</option><option>Rear Shocks</option><option>Suspension Parts</option>
+            </optgroup>
+            <optgroup label="Saddle &amp; Seatpost">
+              <option>Saddles</option><option>Seatposts</option><option>Dropper Posts</option>
+            </optgroup>
+            <optgroup label="Pedals">
+              <option>Flat Pedals</option><option>Clipless Pedals</option>
+            </optgroup>
+            <optgroup label="Apparel">
+              <option>Jerseys</option><option>Bibs &amp; Shorts</option><option>Jackets</option>
+              <option>Base Layers</option><option>Socks</option><option>Gloves</option>
+            </optgroup>
+            <optgroup label="Protection &amp; Helmets">
+              <option>Helmets</option><option>Pads &amp; Protection</option>
+            </optgroup>
+            <optgroup label="Shoes">
+              <option>MTB Shoes</option><option>Road Shoes</option><option>Casual Cycling Shoes</option>
+            </optgroup>
+            <optgroup label="Eyewear">
+              <option>Sunglasses</option><option>Goggles</option>
+            </optgroup>
+            <optgroup label="Bags &amp; Packs">
+              <option>Hydration Packs</option><option>Frame Bags</option>
+              <option>Saddle Bags</option><option>Handlebar Bags</option><option>Backpacks</option>
+            </optgroup>
+            <optgroup label="Electronics &amp; Lighting">
+              <option>Bike Computers</option><option>GPS Units</option>
+              <option>Heart Rate Monitors</option><option>Power Meters</option>
+              <option>Lights</option><option>Sensors &amp; Accessories</option>
+            </optgroup>
+            <optgroup label="Tools &amp; Maintenance">
+              <option>Tools</option><option>Stands &amp; Workstands</option>
+              <option>Pumps</option><option>Lube &amp; Cleaners</option>
+            </optgroup>
+            <optgroup label="Frames &amp; Complete Bikes">
+              <option>Frames</option><option>Complete Bikes</option>
+            </optgroup>
+            <option>Other</option>
+          </select>
+        </div>
+        <div id="es-${l.id}" style="display:none;">
+          <div class="form-label" style="margin-bottom:4px;">Size</div>
+          <select class="form-select" id="esv-${l.id}" style="width:140px;">
+            <option value="">Select size</option>
           </select>
         </div>
         <button class="btn btn-primary btn-sm" onclick="saveListing('${l.id}')">Save</button>
@@ -435,10 +553,24 @@ function renderListings(listings){
     </div>`).join('');
 }
 
-function toggleEdit(id, price, cat){
+function updateEditSize(id){
+  const cat=document.getElementById('ec-'+id)?.value;
+  const sizes=SIZE_MAP[cat];
+  const grp=document.getElementById('es-'+id);
+  const sel=document.getElementById('esv-'+id);
+  if(!grp||!sel)return;
+  if(sizes){
+    sel.innerHTML='<option value="">Select size</option>'+sizes.map(s=>`<option>${s}</option>`).join('');
+    grp.style.display='';
+  } else {
+    grp.style.display='none';
+    sel.value='';
+  }
+}
+
+function toggleEdit(id, price, cat, size){
   const el=document.getElementById('edit-'+id);
   const open=el.style.display==='none';
-  // close all others
   document.querySelectorAll('[id^="edit-"]').forEach(e=>e.style.display='none');
   if(open){
     el.style.display='block';
@@ -446,7 +578,11 @@ function toggleEdit(id, price, cat){
     const ci=document.getElementById('ec-'+id);
     if(pi) pi.value=price;
     if(ci){
-      [...ci.options].forEach(o=>{ if(o.value===cat||o.text===cat) o.selected=true; });
+      [...ci.options].forEach(o=>{ o.selected=(o.value===cat||o.text===cat); });
+      updateEditSize(id);
+      // pre-select existing size
+      const sv=document.getElementById('esv-'+id);
+      if(sv&&size) [...sv.options].forEach(o=>{ o.selected=(o.text===size||o.value===size); });
     }
   }
 }
@@ -454,9 +590,10 @@ function toggleEdit(id, price, cat){
 async function saveListing(id){
   const price=document.getElementById('ep-'+id)?.value;
   const category=document.getElementById('ec-'+id)?.value;
+  const size=document.getElementById('esv-'+id)?.value||'';
   if(!price||Number(price)<1){showToast('Enter a valid price','error');return;}
   try{
-    const r=await fetch(API+'/listings/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,price:Number(price),category})});
+    const r=await fetch(API+'/listings/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,price:Number(price),category,size})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');
     showToast('Listing updated');
@@ -593,6 +730,49 @@ function updateFeeCalc(){
   document.getElementById('fcNet').textContent='$'+(price*0.88).toFixed(2);
 }
 
+const SIZE_MAP = {
+  'Jerseys':['XS','S','M','L','XL','XXL'],
+  'Bibs & Shorts':['XS','S','M','L','XL','XXL'],
+  'Jackets':['XS','S','M','L','XL','XXL'],
+  'Base Layers':['XS','S','M','L','XL','XXL'],
+  'Gloves':['XS','S','M','L','XL'],
+  'Socks':['S (EU 36-39)','M (EU 40-42)','L (EU 43-46)'],
+  'Helmets':['XS (50-54cm)','S (54-56cm)','M (56-58cm)','L (58-60cm)','XL (60-62cm)'],
+  'Pads & Protection':['XS','S','M','L','XL'],
+  'MTB Shoes':['EU 36','EU 37','EU 38','EU 39','EU 40','EU 41','EU 42','EU 43','EU 44','EU 45','EU 46','EU 47','EU 48'],
+  'Road Shoes':['EU 36','EU 37','EU 38','EU 39','EU 40','EU 41','EU 42','EU 43','EU 44','EU 45','EU 46','EU 47','EU 48'],
+  'Casual Cycling Shoes':['EU 36','EU 37','EU 38','EU 39','EU 40','EU 41','EU 42','EU 43','EU 44','EU 45','EU 46','EU 47','EU 48'],
+  'Frames':['XS','S','M','L','XL'],
+  'Complete Bikes':['XS','S','M','L','XL'],
+  'Wheels':['26"','27.5"','29"','700c'],
+  'Tires':['26"×1.9"','26"×2.1"','26"×2.3"','26"×2.4"','26"×2.6"','27.5"×1.9"','27.5"×2.1"','27.5"×2.3"','27.5"×2.4"','27.5"×2.6"','29"×1.9"','29"×2.1"','29"×2.3"','29"×2.4"','29"×2.6"','700c×23mm','700c×25mm','700c×28mm','700c×32mm','700c×38mm','700c×40mm','700c×45mm','700c×50mm'],
+  'Seatposts':['27.2mm','30.9mm','31.6mm','34.9mm'],
+  'Dropper Posts':['27.2mm','30.9mm','31.6mm','34.9mm'],
+  'Stems':['60mm','70mm','80mm','90mm','100mm','110mm','120mm'],
+  'Handlebars':['680mm','700mm','720mm','740mm','760mm','780mm','800mm'],
+  'Cranks':['165mm','170mm','172.5mm','175mm'],
+  'Cassettes':['8-speed','9-speed','10-speed','11-speed','12-speed'],
+  'Chainrings':['28t','30t','32t','34t','36t','38t','40t','42t','44t','46t','48t','50t','52t'],
+  'Rotors':['140mm','160mm','180mm','203mm'],
+  'Bottom Brackets':['68mm','73mm','83mm','PF30','BB30','T47','BSA'],
+  'Forks':['26"','27.5"','29"'],
+  'Rear Shocks':['Small','Medium','Large'],
+};
+
+function updateSizeField(){
+  const cat=document.getElementById('newCat').value;
+  const sizes=SIZE_MAP[cat];
+  const grp=document.getElementById('sizeGroup');
+  const sel=document.getElementById('newSize');
+  if(sizes){
+    sel.innerHTML='<option value="">Select size</option>'+sizes.map(s=>`<option>${s}</option>`).join('');
+    grp.style.display='';
+  } else {
+    grp.style.display='none';
+    sel.value='';
+  }
+}
+
 async function submitListing(e){
   e.preventDefault();if(!SESSION)return;
   const btn=document.getElementById('submitBtn');
@@ -600,6 +780,7 @@ async function submitListing(e){
   const fd=new FormData();
   fd.append('title',document.getElementById('newTitle').value);
   fd.append('category',document.getElementById('newCat').value);
+  const sz=document.getElementById('newSize').value; if(sz) fd.append('size',sz);
   fd.append('condition',document.getElementById('newCond').value);
   fd.append('price',document.getElementById('newPrice').value);
   fd.append('description',document.getElementById('newDesc').value);
