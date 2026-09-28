@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GoodKit — Seller Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --orange: #FF5C1A;
+  --orange-dark: #D94A0E;
+  --ink: #1A1A14;
+  --ink-soft: #3A3A30;
+  --paper: #F5F0E8;
+  --paper-dark: #EDE6D8;
+  --gravel: #8A8678;
+  --pine: #2A4A2E;
+  --hivis: #D4E600;
+  --white: #FFFFFF;
+  --border: rgba(26,26,20,0.12);
+  --shadow: 0 2px 12px rgba(26,26,20,0.08);
+  --radius: 10px;
+  --success: #2A6B2A;
+  --warn: #B86400;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: var(--paper); color: var(--ink); min-height: 100vh; }
+
+/* NAV */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--ink);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; height: 56px;
+  border-bottom: 2px solid var(--orange);
+}
+.nav-logo { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; color: var(--paper); text-decoration: none; letter-spacing: -0.5px; }
+.nav-logo span { color: var(--orange); }
+.nav-seller { display: flex; align-items: center; gap: 12px; }
+.nav-seller-name { font-size: 13px; color: rgba(245,240,232,0.65); }
+.nav-logout { font-size: 13px; color: var(--gravel); cursor: pointer; background: none; border: none; }
+.nav-logout:hover { color: var(--paper); }
+
+/* BTN */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all 0.15s; }
+.btn-primary { background: var(--orange); color: white; }
+.btn-primary:hover { background: var(--orange-dark); }
+.btn-ghost { background: transparent; color: var(--paper); border: 1.5px solid rgba(245,240,232,0.3); }
+.btn-outline { background: transparent; color: var(--ink); border: 1.5px solid var(--border); }
+.btn-outline:hover { border-color: var(--ink); }
+.btn-danger { background: transparent; color: #c0392b; border: 1.5px solid #c0392b; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-xs { padding: 4px 8px; font-size: 12px; border-radius: 4px; }
+
+/* LOGIN STATE */
+#loginScreen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.login-box {
+  background: white; border-radius: 16px; padding: 40px;
+  width: 100%; max-width: 400px;
+  box-shadow: 0 8px 40px rgba(26,26,20,0.1);
+  text-align: center;
+}
+.login-logo { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 32px; margin-bottom: 6px; }
+.login-logo span { color: var(--orange); }
+.login-tagline { color: var(--gravel); font-size: 14px; margin-bottom: 32px; }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; text-align: left; }
+.form-label { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink); }
+.form-input, .form-textarea, .form-select {
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 10px 12px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+  color: var(--ink); background: white; width: 100%;
+}
+.form-input:focus, .form-textarea:focus, .form-select:focus { outline: none; border-color: var(--orange); }
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-hint { font-size: 11px; color: var(--gravel); }
+
+/* PORTAL LAYOUT */
+#portalScreen { display: none; }
+.portal-container { max-width: 1100px; margin: 0 auto; padding: 28px 16px 60px; display: flex; flex-direction: column; gap: 28px; }
+
+/* STATS */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+.stat-card { background: white; border-radius: var(--radius); padding: 20px; border: 1px solid var(--border); }
+.stat-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gravel); margin-bottom: 8px; }
+.stat-value { font-family: 'DM Mono', monospace; font-size: 26px; font-weight: 500; color: var(--ink); }
+.stat-value.orange { color: var(--orange); }
+.stat-sub { font-size: 12px; color: var(--gravel); margin-top: 4px; }
+
+/* STRIPE CONNECT BANNER */
+.stripe-banner {
+  background: var(--pine); border-radius: var(--radius);
+  padding: 16px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.stripe-banner p { color: white; font-size: 14px; flex: 1; }
+.stripe-banner p strong { color: var(--hivis); }
+.stripe-badge { background: rgba(255,255,255,0.15); color: white; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 4px; white-space: nowrap; }
+
+/* SECTION */
+.portal-section { background: white; border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
+.section-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.section-title { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 17px; }
+.section-body { padding: 22px; }
+
+/* TABS */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
+.tab { padding: 10px 18px; font-size: 14px; font-weight: 500; color: var(--gravel); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+.tab-content { display: none; padding: 22px; }
+.tab-content.active { display: block; }
+
+/* LISTINGS TABLE */
+.listings-table { width: 100%; border-collapse: collapse; }
+.listings-table th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gravel); font-weight: 600; padding: 0 0 12px; border-bottom: 1px solid var(--border); }
+.listings-table td { padding: 14px 0; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+.listings-table tr:last-child td { border-bottom: none; }
+.listing-thumb { width: 44px; height: 44px; border-radius: 6px; background: var(--paper-dark); overflow: hidden; flex-shrink: 0; }
+.listing-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.listing-thumb-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.listing-meta { display: flex; align-items: center; gap: 10px; }
+.listing-title-cell { font-weight: 500; line-height: 1.3; }
+.listing-cat { font-size: 11px; color: var(--gravel); }
+.status-badge { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+.status-active { background: #E8F5E9; color: var(--success); }
+.status-pending { background: #FFF3E0; color: var(--warn); }
+.status-sold { background: var(--paper); color: var(--gravel); }
+.status-draft { background: #F3F4F6; color: #6B7280; }
+.action-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.price-cell { font-family: 'DM Mono', monospace; font-size: 15px; }
+
+/* CREATE LISTING FORM */
+.create-form { display: flex; flex-direction: column; gap: 18px; }
+.create-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 600px) { .create-form-grid { grid-template-columns: 1fr; } }
+
+/* PHOTO UPLOAD */
+.photo-upload-area {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 28px; text-align: center; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.photo-upload-area:hover, .photo-upload-area.drag { border-color: var(--orange); }
+.photo-upload-area p { color: var(--gravel); font-size: 14px; margin-top: 8px; }
+.photo-preview-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.photo-preview { width: 80px; height: 80px; border-radius: 6px; object-fit: cover; border: 1.5px solid var(--border); position: relative; }
+.photo-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; background: var(--ink); color: white; border-radius: 50%; font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; }
+
+/* WEIGHT SELECTOR */
+.weight-tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 500px) { .weight-tiers { grid-template-columns: repeat(2,1fr); } }
+.weight-tier {
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 10px; text-align: center; cursor: pointer;
+  transition: all 0.15s;
+}
+.weight-tier:hover { border-color: var(--orange); }
+.weight-tier.selected { border-color: var(--orange); background: rgba(255,92,26,0.06); }
+.weight-tier-name { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gravel); }
+.weight-tier-range { font-size: 12px; color: var(--ink); margin: 4px 0; }
+.weight-tier-price { font-family: 'DM Mono', monospace; font-size: 15px; color: var(--orange); font-weight: 500; }
+
+/* OFFERS TABLE */
+.offers-table { width: 100%; border-collapse: collapse; }
+.offers-table th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gravel); font-weight: 600; padding: 0 0 12px; border-bottom: 1px solid var(--border); }
+.offers-table td { padding: 14px 0; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+.offers-table tr:last-child td { border-bottom: none; }
+
+/* MESSAGES */
+.message-list { display: flex; flex-direction: column; gap: 10px; }
+.message-thread { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; }
+.message-thread:hover { border-color: var(--orange); }
+.thread-header { padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+.thread-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--orange); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.thread-meta { flex: 1; }
+.thread-name { font-weight: 600; font-size: 14px; }
+.thread-preview { font-size: 12px; color: var(--gravel); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.thread-time { font-size: 11px; color: var(--gravel); }
+.thread-messages { padding: 0 16px 16px; display: none; flex-direction: column; gap: 8px; }
+.thread-messages.open { display: flex; }
+.message-bubble { max-width: 80%; }
+.message-bubble.from-buyer { align-self: flex-start; }
+.message-bubble.from-seller { align-self: flex-end; }
+.bubble-inner { padding: 10px 14px; border-radius: 10px; font-size: 14px; line-height: 1.5; }
+.from-buyer .bubble-inner { background: var(--paper); color: var(--ink); }
+.from-seller .bubble-inner { background: var(--orange); color: white; }
+.bubble-time { font-size: 10px; color: var(--gravel); margin-top: 3px; }
+.reply-area { display: flex; gap: 8px; margin-top: 10px; }
+.reply-area input { flex: 1; border: 1.5px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: 'DM Sans', sans-serif; }
+.reply-area input:focus { outline: none; border-color: var(--orange); }
+
+/* SALES TABLE */
+.sales-table { width: 100%; border-collapse: collapse; }
+.sales-table th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gravel); font-weight: 600; padding: 0 0 12px; border-bottom: 1px solid var(--border); }
+.sales-table td { padding: 14px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.sales-table tr:last-child td { border-bottom: none; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 999; opacity: 0; transition: opacity 0.25s; white-space: nowrap; }
+.toast.show { opacity: 1; }
+.toast.error { background: #c0392b; }
+.toast.success { background: var(--success); }
+
+/* COUNTER MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(26,26,20,0.65); backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 14px; width: 100%; max-width: 420px; padding: 28px; position: relative; }
+.modal-close { position: absolute; top: 14px; right: 14px; background: var(--ink); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* SPINNER */
+.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 40px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* EMPTY */
+.empty { text-align: center; padding: 40px 24px; color: var(--gravel); font-size: 14px; }
+
+.magic-link-sent { text-align: center; padding: 20px 0; }
+.magic-link-sent h3 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; margin-bottom: 8px; }
+.magic-link-sent p { color: var(--gravel); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">good<span>kit</span></a>
+  <div class="nav-seller">
+    <span class="nav-seller-name" id="navSellerName"></span>
+    <button class="nav-logout" id="logoutBtn" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">good<span>kit</span></div>
+    <p class="login-tagline">seller portal — it's supposed to be fun.</p>
+    <div id="loginForm" class="login-form">
+      <div class="form-group">
+        <label class="form-label">Email address</label>
+        <input class="form-input" type="email" id="loginEmail" placeholder="you@email.com" onkeydown="if(event.key==='Enter') sendMagicLink()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;font-size:15px;" onclick="sendMagicLink()">Send Magic Link</button>
+      <p class="form-hint" style="text-align:center;">No password. We'll email you a one-click login link.</p>
+    </div>
+    <div id="magicSent" class="magic-link-sent" style="display:none;">
+      <div style="font-size:40px;margin-bottom:12px;">📬</div>
+      <h3>Check your email</h3>
+      <p>We sent a magic link to <strong id="sentToEmail"></strong>. Click it to sign in — no password needed.</p>
+    </div>
+  </div>
+</div>
+
+<!-- PORTAL SCREEN -->
+<div id="portalScreen">
+  <div class="portal-container">
+
+    <!-- STRIPE CONNECT BANNER (shown if not connected) -->
+    <div class="stripe-banner" id="stripeBanner" style="display:none;">
+      <p><strong>Connect your bank account</strong> to receive payouts when your gear sells. It only takes 2 minutes.</p>
+      <button class="btn btn-primary btn-sm" onclick="connectStripe()">Connect Stripe →</button>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="stat-label">Total Earned</div><div class="stat-value orange" id="statEarned">—</div></div>
+      <div class="stat-card"><div class="stat-label">Pending Payout</div><div class="stat-value" id="statPending">—</div></div>
+      <div class="stat-card"><div class="stat-label">Active Listings</div><div class="stat-value" id="statActive">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Views</div><div class="stat-value" id="statViews">—</div></div>
+    </div>
+
+    <!-- MAIN TABS -->
+    <div class="portal-section">
+      <div class="tabs">
+        <div class="tab active" onclick="switchPortalTab('listings')">Listings</div>
+        <div class="tab" onclick="switchPortalTab('offers')">Offers <span id="offersBadge"></span></div>
+        <div class="tab" onclick="switchPortalTab('messages')">Messages</div>
+        <div class="tab" onclick="switchPortalTab('sales')">Sales</div>
+        <div class="tab" onclick="switchPortalTab('create')">+ List Gear</div>
+      </div>
+
+      <!-- LISTINGS TAB -->
+      <div class="tab-content active" id="tab-listings">
+        <div id="listingsTableWrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- OFFERS TAB -->
+      <div class="tab-content" id="tab-offers">
+        <div id="offersTableWrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- MESSAGES TAB -->
+      <div class="tab-content" id="tab-messages">
+        <div id="messagesListWrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- SALES TAB -->
+      <div class="tab-content" id="tab-sales">
+        <div id="salesTableWrap"><div class="spinner"></div></div>
+      </div>
+
+      <!-- CREATE LISTING TAB -->
+      <div class="tab-content" id="tab-create">
+        <form class="create-form" onsubmit="submitListing(event)">
+
+          <div class="form-group">
+            <label class="form-label">Title</label>
+            <input class="form-input" type="text" id="newTitle" placeholder="e.g. Fox 36 Factory 160mm Fork 2022" required>
+          </div>
+
+          <div class="create-form-grid">
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select class="form-select" id="newCategory" required>
+                <option value="">Select…</option>
+                <option>Components</option>
+                <option>Apparel</option>
+                <option>Wheels</option>
+                <option>Helmets</option>
+                <option>Shoes</option>
+                <option>Bags & Packs</option>
+                <option>Tools</option>
+                <option>Electronics</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Condition</label>
+              <select class="form-select" id="newCondition" required>
+                <option value="">Select…</option>
+                <option>Like New</option>
+                <option>Excellent</option>
+                <option>Good</option>
+                <option>Fair</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Description</label>
+            <textarea class="form-textarea" id="newDescription" placeholder="What's the story? Size, mileage, any damage, what it came off of…" required></textarea>
+          </div>
+
+          <div class="create-form-grid">
+            <div class="form-group">
+              <label class="form-label">Asking Price</label>
+              <input class="form-input" type="number" id="newPrice" placeholder="0.00" min="1" step="0.01" required>
+              <span class="form-hint" id="priceHint"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Accept Offers?</label>
+              <select class="form-select" id="newOffersAllowed">
+                <option value="1">Yes — let buyers make offers</option>
+                <option value="0">No — firm price only</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- SHIPPING TIER -->
+          <div class="form-group">
+            <label class="form-label">Shipping Weight</label>
+            <div class="weight-tiers">
+              <div class="weight-tier" data-oz="8" data-price="6" onclick="selectTier(this)">
+                <div class="weight-tier-name">XS</div>
+                <div class="weight-tier-range">0 – 1 lb</div>
+                <div class="weight-tier-price">$6</div>
+              </div>
+              <div class="weight-tier" data-oz="32" data-price="10" onclick="selectTier(this)">
+                <div class="weight-tier-name">SM</div>
+                <div class="weight-tier-range">1 – 5 lb</div>
+                <div class="weight-tier-price">$10</div>
+              </div>
+              <div class="weight-tier" data-oz="120" data-price="16" onclick="selectTier(this)">
+                <div class="weight-tier-name">MD</div>
+                <div class="weight-tier-range">5 – 20 lb</div>
+                <div class="weight-tier-price">$16</div>
+              </div>
+              <div class="weight-tier" data-oz="400" data-price="45" onclick="selectTier(this)">
+                <div class="weight-tier-name">LG</div>
+                <div class="weight-tier-range">20+ lb</div>
+                <div class="weight-tier-price">$45</div>
+              </div>
+            </div>
+            <input type="hidden" id="newWeightOz" value="8">
+            <span class="form-hint">Prepaid label emailed once your item sells. Buyer pays shipping.</span>
+          </div>
+
+          <!-- PHOTO UPLOAD -->
+          <div class="form-group">
+            <label class="form-label">Photos (up to 8)</label>
+            <div class="photo-upload-area" id="uploadArea" onclick="document.getElementById('photoInput').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)">
+              <div style="font-size:32px;">📷</div>
+              <p>Click to upload or drag photos here</p>
+              <p style="font-size:12px;margin-top:4px;">JPEG, PNG, WEBP — up to 10MB each</p>
+            </div>
+            <input type="file" id="photoInput" accept="image/*" multiple hidden onchange="handlePhotos(this.files)">
+            <div class="photo-preview-grid" id="photoPreviewGrid"></div>
+          </div>
+
+          <div id="listingCostBreakdown" style="display:none;" class="stat-card" style="margin-top:0;">
+            <div class="stat-label">Fee breakdown</div>
+            <div id="breakdownContent" style="font-size:13px;color:var(--ink-soft);line-height:1.8;"></div>
+          </div>
+
+          <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;padding:13px;font-size:15px;">Publish Listing</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COUNTER OFFER MODAL -->
+<div class="modal-overlay" id="counterModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeCounter()">✕</button>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;margin-bottom:6px;">Counter Offer</h2>
+    <p style="color:var(--gravel);font-size:14px;margin-bottom:20px;" id="counterDesc"></p>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Your Counter Amount</label>
+        <input class="form-input" type="number" id="counterAmount" placeholder="0.00" min="1" step="0.01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Message (optional)</label>
+        <textarea class="form-textarea" id="counterMessage" placeholder="Why you're countering…"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="submitCounter()" style="width:100%;justify-content:center;padding:12px;">Send Counter</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://api.goodkit.com';
+let sellerSession = null, sellerData = null, currentOfferId = null;
+let selectedPhotos = [];
+
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+async function init() {
+  const token = localStorage.getItem('gk_session');
+  if (!token) { showLogin(); return; }
+  try {
+    const res  = await fetch(`${API}/seller/me`, { headers: { 'x-session-token': token } });
+    if (!res.ok) { showLogin(); return; }
+    const data = await res.json();
+    sellerSession = token;
+    sellerData    = data.seller;
+    showPortal();
+  } catch(e) { showLogin(); }
+}
+
+function showLogin() { document.getElementById('loginScreen').style.display = 'flex'; }
+
+async function sendMagicLink() {
+  const email = document.getElementById('loginEmail').value.trim();
+  if (!email) return showToast('Enter your email first', 'error');
+  try {
+    await fetch(`${API}/seller/magic-link`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email }) });
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('magicSent').style.display = 'block';
+    document.getElementById('sentToEmail').textContent = email;
+  } catch(e) { showToast('Could not send link', 'error'); }
+}
+
+// Check ?token= in URL (magic link redirect)
+async function checkMagicToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('token');
+  if (!token) return;
+  try {
+    const res  = await fetch(`${API}/seller/verify`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ token }) });
+    const data = await res.json();
+    if (data.sessionToken) {
+      localStorage.setItem('gk_session', data.sessionToken);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e) {}
+}
+
+function logout() {
+  localStorage.removeItem('gk_session');
+  sellerSession = null; sellerData = null;
+  window.location.reload();
+}
+
+function showPortal() {
+  document.getElementById('loginScreen').style.display  = 'none';
+  document.getElementById('portalScreen').style.display = 'block';
+  document.getElementById('navSellerName').textContent  = sellerData.name || sellerData.email;
+  if (!sellerData.stripe_account_id) {
+    document.getElementById('stripeBanner').style.display = 'flex';
+  }
+  loadDashboard();
+}
+
+// ── STRIPE CONNECT ────────────────────────────────────────────────────────────
+async function connectStripe() {
+  try {
+    const res  = await fetch(`${API}/seller/onboard`, { method: 'POST', headers: {'Content-Type':'application/json','x-session-token': sellerSession} });
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  } catch(e) { showToast('Could not start Stripe setup', 'error'); }
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [statsRes, listingsRes, offersRes, salesRes, msgsRes] = await Promise.all([
+      fetch(`${API}/seller/stats`, { headers: {'x-session-token': sellerSession} }),
+      fetch(`${API}/seller/listings`, { headers: {'x-session-token': sellerSession} }),
+      fetch(`${API}/seller/offers`, { headers: {'x-session-token': sellerSession} }),
+      fetch(`${API}/seller/sales`, { headers: {'x-session-token': sellerSession} }),
+      fetch(`${API}/seller/messages`, { headers: {'x-session-token': sellerSession} }),
+    ]);
+    const [stats, listings, offers, sales, msgs] = await Promise.all([statsRes.json(), listingsRes.json(), offersRes.json(), salesRes.json(), msgsRes.json()]);
+    renderStats(stats);
+    renderListingsTable(listings.listings || []);
+    renderOffersTable(offers.offers || []);
+    renderSalesTable(sales.sales || []);
+    renderMessages(msgs.threads || []);
+    const pending = (offers.offers || []).filter(o => o.status === 'pending').length;
+    if (pending) document.getElementById('offersBadge').textContent = ` (${pending})`;
+  } catch(e) { showToast('Could not load dashboard', 'error'); }
+}
+
+function renderStats(s) {
+  document.getElementById('statEarned').textContent  = s.totalEarned  != null ? `$${Number(s.totalEarned).toFixed(0)}`  : '$0';
+  document.getElementById('statPending').textContent = s.pendingPayout != null ? `$${Number(s.pendingPayout).toFixed(0)}` : '$0';
+  document.getElementById('statActive').textContent  = s.activeListings ?? 0;
+  document.getElementById('statViews').textContent   = s.totalViews ?? 0;
+}
+
+// ── LISTINGS TABLE ────────────────────────────────────────────────────────────
+function renderListingsTable(listings) {
+  const wrap = document.getElementById('listingsTableWrap');
+  if (!listings.length) { wrap.innerHTML = `<div class="empty">No listings yet. <a href="#" onclick="switchPortalTab('create')" style="color:var(--orange);">List your first item →</a></div>`; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="listings-table">
+    <thead><tr>
+      <th>Item</th><th>Price</th><th>Status</th><th>Views</th><th>Actions</th>
+    </tr></thead>
+    <tbody>${listings.map(l => `<tr>
+      <td>
+        <div class="listing-meta">
+          <div class="listing-thumb">${l.photos?.length ? `<img src="${API}${l.photos[0]}" alt="">` : `<div class="listing-thumb-placeholder">🚴</div>`}</div>
+          <div><div class="listing-title-cell">${l.title}</div><div class="listing-cat">${l.category}</div></div>
+        </div>
+      </td>
+      <td class="price-cell">$${Number(l.price).toFixed(0)}</td>
+      <td><span class="status-badge status-${l.status}">${l.status}</span></td>
+      <td>${l.views ?? 0}</td>
+      <td><div class="action-group">
+        <button class="btn btn-sm btn-outline" onclick="editListing('${l.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteListing('${l.id}')">Delete</button>
+      </div></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+async function editListing(id) { showToast('Edit flow coming soon'); }
+async function deleteListing(id) {
+  if (!confirm('Delete this listing? This cannot be undone.')) return;
+  try {
+    await fetch(`${API}/seller/listings/${id}`, { method: 'DELETE', headers: {'x-session-token': sellerSession} });
+    showToast('Listing deleted', 'success');
+    loadDashboard();
+  } catch(e) { showToast('Could not delete listing', 'error'); }
+}
+
+// ── OFFERS TABLE ──────────────────────────────────────────────────────────────
+function renderOffersTable(offers) {
+  const wrap = document.getElementById('offersTableWrap');
+  if (!offers.length) { wrap.innerHTML = `<div class="empty">No offers yet. They'll appear here when buyers make an offer on your listings.</div>`; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="offers-table">
+    <thead><tr><th>Item</th><th>Buyer</th><th>Offer</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${offers.map(o => `<tr>
+      <td>${o.listing_title}</td>
+      <td>${o.buyer_name || o.buyer_email}</td>
+      <td class="price-cell">$${Number(o.amount).toFixed(2)}</td>
+      <td><span class="status-badge status-${o.status === 'pending' ? 'pending' : o.status === 'accepted' ? 'active' : 'sold'}">${o.status}</span></td>
+      <td>
+        ${o.status === 'pending' ? `<div class="action-group">
+          <button class="btn btn-xs btn-primary" onclick="respondOffer('${o.id}','accept')">Accept</button>
+          <button class="btn btn-xs btn-outline" onclick="openCounter('${o.id}','${o.listing_title}','${o.amount}')">Counter</button>
+          <button class="btn btn-xs btn-danger" onclick="respondOffer('${o.id}','decline')">Decline</button>
+        </div>` : '—'}
+      </td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+async function respondOffer(id, action) {
+  try {
+    await fetch(`${API}/offers/${id}/respond`, { method: 'POST', headers: {'Content-Type':'application/json','x-session-token': sellerSession}, body: JSON.stringify({ action }) });
+    showToast(action === 'accept' ? 'Offer accepted!' : 'Offer declined', action === 'accept' ? 'success' : '');
+    loadDashboard();
+  } catch(e) { showToast('Could not respond to offer', 'error'); }
+}
+
+function openCounter(id, title, amount) {
+  currentOfferId = id;
+  document.getElementById('counterDesc').textContent = `Offer of $${Number(amount).toFixed(2)} on "${title}"`;
+  document.getElementById('counterModal').classList.add('open');
+}
+function closeCounter() { document.getElementById('counterModal').classList.remove('open'); currentOfferId = null; }
+async function submitCounter() {
+  const amount  = document.getElementById('counterAmount').value;
+  const message = document.getElementById('counterMessage').value;
+  if (!amount) return showToast('Enter a counter amount', 'error');
+  try {
+    await fetch(`${API}/offers/${currentOfferId}/respond`, { method: 'POST', headers: {'Content-Type':'application/json','x-session-token': sellerSession}, body: JSON.stringify({ action: 'counter', counterAmount: amount, message }) });
+    closeCounter();
+    showToast('Counter offer sent!');
+    loadDashboard();
+  } catch(e) { showToast('Could not send counter', 'error'); }
+}
+
+// ── MESSAGES ──────────────────────────────────────────────────────────────────
+function renderMessages(threads) {
+  const wrap = document.getElementById('messagesListWrap');
+  if (!threads.length) { wrap.innerHTML = `<div class="empty">No messages yet.</div>`; return; }
+  wrap.innerHTML = `<div class="message-list">${threads.map((t,i) => `
+    <div class="message-thread" onclick="toggleThread(${i})">
+      <div class="thread-header">
+        <div class="thread-avatar">${(t.buyer_name || t.buyer_email || '?')[0].toUpperCase()}</div>
+        <div class="thread-meta">
+          <div class="thread-name">${t.buyer_name || t.buyer_email}</div>
+          <div class="thread-preview">${t.lastMessage || '…'}</div>
+        </div>
+        <div class="thread-time">${formatTime(t.lastAt)}</div>
+      </div>
+      <div class="thread-messages" id="thread-${i}">
+        ${(t.messages || []).map(m => `
+          <div class="message-bubble from-${m.from_role}">
+            <div class="bubble-inner">${m.body}</div>
+            <div class="bubble-time">${formatTime(m.created_at)}</div>
+          </div>`).join('')}
+        <div class="reply-area">
+          <input type="text" placeholder="Reply…" id="reply-${i}" onkeydown="if(event.key==='Enter') sendReply(${i},'${t.listing_id}','${t.buyer_email}')">
+          <button class="btn btn-primary btn-sm" onclick="sendReply(${i},'${t.listing_id}','${t.buyer_email}')">Send</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+function toggleThread(i) {
+  const el = document.getElementById(`thread-${i}`);
+  el.classList.toggle('open');
+}
+
+async function sendReply(i, listingId, buyerEmail) {
+  const input = document.getElementById(`reply-${i}`);
+  const body  = input.value.trim();
+  if (!body) return;
+  try {
+    await fetch(`${API}/messages`, { method: 'POST', headers: {'Content-Type':'application/json','x-session-token': sellerSession}, body: JSON.stringify({ listingId, toEmail: buyerEmail, fromRole: 'seller', body }) });
+    input.value = '';
+    showToast('Reply sent!');
+    loadDashboard();
+  } catch(e) { showToast('Could not send reply', 'error'); }
+}
+
+// ── SALES ─────────────────────────────────────────────────────────────────────
+function renderSalesTable(sales) {
+  const wrap = document.getElementById('salesTableWrap');
+  if (!sales.length) { wrap.innerHTML = `<div class="empty">No sales yet. Once a buyer checks out, it'll show up here.</div>`; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto;"><table class="sales-table">
+    <thead><tr><th>Item</th><th>Sale Price</th><th>You Earn</th><th>Label</th><th>Date</th></tr></thead>
+    <tbody>${sales.map(s => `<tr>
+      <td>${s.listing_title}</td>
+      <td class="price-cell">$${Number(s.item_price / 100).toFixed(2)}</td>
+      <td class="price-cell" style="color:var(--success)">$${Number(s.seller_payout / 100).toFixed(2)}</td>
+      <td><span class="status-badge status-${s.label_tier ? 'active' : 'draft'}">${s.label_tier || 'pending'}</span></td>
+      <td style="color:var(--gravel);font-size:13px;">${formatTime(s.created_at)}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── CREATE LISTING ────────────────────────────────────────────────────────────
+function selectTier(el) {
+  document.querySelectorAll('.weight-tier').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('newWeightOz').value = el.dataset.oz;
+  updatePriceHint();
+}
+
+document.getElementById('newPrice')?.addEventListener('input', updatePriceHint);
+function updatePriceHint() {
+  const price = parseFloat(document.getElementById('newPrice').value);
+  if (!price) { document.getElementById('listingCostBreakdown').style.display = 'none'; return; }
+  const fee = price * 0.12;
+  const net = price * 0.88;
+  document.getElementById('breakdownContent').innerHTML = `
+    Platform fee (12%): &minus;$${fee.toFixed(2)}<br>
+    <strong style="color:var(--success)">You keep: $${net.toFixed(2)}</strong>`;
+  document.getElementById('listingCostBreakdown').style.display = 'block';
+}
+
+function handleDragOver(e) { e.preventDefault(); document.getElementById('uploadArea').classList.add('drag'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadArea').classList.remove('drag');
+  handlePhotos(e.dataTransfer.files);
+}
+function handlePhotos(files) {
+  const existing = selectedPhotos.length;
+  const toAdd = Math.min(files.length, 8 - existing);
+  for (let i = 0; i < toAdd; i++) selectedPhotos.push(files[i]);
+  renderPhotoPreview();
+}
+function removePhoto(i) { selectedPhotos.splice(i, 1); renderPhotoPreview(); }
+function renderPhotoPreview() {
+  const grid = document.getElementById('photoPreviewGrid');
+  grid.innerHTML = selectedPhotos.map((f,i) => {
+    const url = URL.createObjectURL(f);
+    return `<div style="position:relative;display:inline-block;">
+      <img class="photo-preview" src="${url}">
+      <button class="photo-remove" onclick="removePhoto(${i})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function submitListing(e) {
+  e.preventDefault();
+  if (!sellerSession) return showToast('Not signed in', 'error');
+  const fd = new FormData();
+  fd.append('title',          document.getElementById('newTitle').value);
+  fd.append('category',       document.getElementById('newCategory').value);
+  fd.append('condition',      document.getElementById('newCondition').value);
+  fd.append('description',    document.getElementById('newDescription').value);
+  fd.append('price',          document.getElementById('newPrice').value);
+  fd.append('offersAllowed',  document.getElementById('newOffersAllowed').value);
+  fd.append('weightOz',       document.getElementById('newWeightOz').value);
+  selectedPhotos.forEach(f => fd.append('photos', f));
+  const btn = e.target.querySelector('[type=submit]');
+  btn.disabled = true; btn.textContent = 'Publishing…';
+  try {
+    const res  = await fetch(`${API}/seller/listings`, { method: 'POST', headers: {'x-session-token': sellerSession}, body: fd });
+    if (!res.ok) throw new Error();
+    showToast('🎉 Listing published!', 'success');
+    e.target.reset();
+    selectedPhotos = [];
+    renderPhotoPreview();
+    document.querySelectorAll('.weight-tier').forEach(t => t.classList.remove('selected'));
+    document.getElementById('listingCostBreakdown').style.display = 'none';
+    switchPortalTab('listings');
+    loadDashboard();
+  } catch(err) { showToast('Could not publish listing', 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Publish Listing'; }
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function switchPortalTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const tabs = document.querySelectorAll('.tab');
+  const tabNames = ['listings','offers','messages','sales','create'];
+  const idx = tabNames.indexOf(name);
+  if (idx >= 0) tabs[idx].classList.add('active');
+  document.getElementById(`tab-${name}`)?.classList.add('active');
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = (now - d) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  setTimeout(() => { t.className = 'toast'; }, 3500);
+}
+
+document.getElementById('counterModal').addEventListener('click', e => { if (e.target === document.getElementById('counterModal')) closeCounter(); });
+
+// Init
+(async () => { await checkMagicToken(); await init(); })();
+</script>
+</body>
+</html>
