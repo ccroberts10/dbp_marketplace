@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GoodKit — Shop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --orange: #FF5C1A;
+  --orange-dark: #D94A0E;
+  --ink: #1A1A14;
+  --ink-soft: #3A3A30;
+  --paper: #F5F0E8;
+  --paper-dark: #EDE6D8;
+  --gravel: #8A8678;
+  --pine: #2A4A2E;
+  --hivis: #D4E600;
+  --white: #FFFFFF;
+  --border: rgba(26,26,20,0.12);
+  --shadow: 0 2px 12px rgba(26,26,20,0.08);
+  --radius: 10px;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+/* NAV */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--ink);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; height: 56px;
+  border-bottom: 2px solid var(--orange);
+}
+.nav-logo {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 800; font-size: 22px; color: var(--paper);
+  text-decoration: none; letter-spacing: -0.5px;
+}
+.nav-logo span { color: var(--orange); }
+.nav-actions { display: flex; gap: 10px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all 0.15s; }
+.btn-primary { background: var(--orange); color: white; }
+.btn-primary:hover { background: var(--orange-dark); }
+.btn-ghost { background: transparent; color: var(--paper); border: 1.5px solid rgba(245,240,232,0.3); }
+.btn-ghost:hover { border-color: var(--paper); }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-outline { background: transparent; color: var(--ink); border: 1.5px solid var(--border); }
+.btn-outline:hover { border-color: var(--ink); }
+
+/* HERO STRIP */
+.hero-strip {
+  background: var(--orange);
+  padding: 40px 24px 36px;
+  text-align: center;
+}
+.hero-strip h1 {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 800; font-size: clamp(28px, 5vw, 48px);
+  color: white; letter-spacing: -1px; line-height: 1.1;
+  margin-bottom: 10px;
+}
+.hero-strip p { color: rgba(255,255,255,0.85); font-size: 16px; margin-bottom: 20px; }
+.hero-strip .btn { background: var(--ink); color: white; font-size: 15px; padding: 12px 28px; }
+.hero-strip .btn:hover { background: #000; }
+
+/* FILTERS */
+.filters-bar {
+  background: white;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.filter-select {
+  appearance: none; background: var(--paper);
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 7px 30px 7px 12px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+  color: var(--ink); cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%231A1A14' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.filter-select:focus { outline: none; border-color: var(--orange); }
+.search-wrap { flex: 1; min-width: 180px; position: relative; }
+.search-input {
+  width: 100%; border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 7px 12px 7px 34px; font-size: 13px; font-family: 'DM Sans', sans-serif;
+  background: var(--paper); color: var(--ink);
+}
+.search-input:focus { outline: none; border-color: var(--orange); }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--gravel); pointer-events: none; }
+.count-badge { margin-left: auto; font-size: 13px; color: var(--gravel); white-space: nowrap; }
+
+/* GRID */
+.shop-container { max-width: 1200px; margin: 0 auto; padding: 24px 16px 60px; }
+.listings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.listing-card {
+  background: white; border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden; cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.listing-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,26,20,0.12); }
+.card-photo {
+  width: 100%; aspect-ratio: 1;
+  background: var(--paper-dark);
+  overflow: hidden; position: relative;
+}
+.card-photo img { width: 100%; height: 100%; object-fit: cover; }
+.card-photo-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--gravel); font-size: 36px;
+}
+.card-condition {
+  position: absolute; top: 8px; left: 8px;
+  background: var(--ink); color: white;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 4px;
+}
+.card-body { padding: 12px 14px 14px; }
+.card-category { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gravel); margin-bottom: 4px; }
+.card-title { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.3; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-footer { display: flex; align-items: center; justify-content: space-between; }
+.card-price { font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 500; color: var(--orange); }
+.card-shipping { font-size: 11px; color: var(--gravel); }
+
+/* EMPTY STATE */
+.empty-state { text-align: center; padding: 80px 24px; }
+.empty-state h3 { font-family: 'Bricolage Grotesque', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+.empty-state p { color: var(--gravel); margin-bottom: 20px; }
+
+/* MODAL OVERLAY */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(26,26,20,0.65); backdrop-filter: blur(4px);
+  align-items: flex-start; justify-content: center;
+  padding: 20px 16px;
+  overflow-y: auto;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 14px;
+  width: 100%; max-width: 760px;
+  position: relative; margin: auto;
+  overflow: hidden;
+}
+.modal-close {
+  position: absolute; top: 14px; right: 14px; z-index: 10;
+  background: var(--ink); color: white; border: none;
+  width: 32px; height: 32px; border-radius: 50%;
+  font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.modal-layout { display: grid; grid-template-columns: 1fr 1fr; }
+@media (max-width: 600px) { .modal-layout { grid-template-columns: 1fr; } }
+.modal-photos { background: var(--paper-dark); aspect-ratio: 1; overflow: hidden; }
+.modal-photos img { width: 100%; height: 100%; object-fit: cover; }
+.modal-photos-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 64px; color: var(--gravel); }
+.modal-info { padding: 24px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 520px; }
+.modal-category { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gravel); }
+.modal-title { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; line-height: 1.2; }
+.modal-price-row { display: flex; align-items: baseline; gap: 8px; }
+.modal-price { font-family: 'DM Mono', monospace; font-size: 28px; font-weight: 500; color: var(--orange); }
+.modal-shipping-tag { font-size: 12px; color: var(--gravel); background: var(--paper); padding: 3px 8px; border-radius: 4px; }
+.modal-condition-badge { display: inline-block; background: var(--ink); color: white; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px; border-radius: 5px; }
+.modal-desc { font-size: 14px; color: var(--ink-soft); line-height: 1.65; }
+.modal-split { background: var(--paper); border-radius: 8px; padding: 12px 14px; }
+.modal-split-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gravel); margin-bottom: 6px; }
+.modal-split-row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
+.modal-split-row.total { font-weight: 600; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 6px; }
+.modal-actions { display: flex; flex-direction: column; gap: 8px; }
+.modal-actions .btn { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
+
+/* TABS in modal */
+.modal-tabs { display: flex; border-bottom: 1px solid var(--border); margin: 0 -24px; padding: 0 24px; gap: 0; }
+.modal-tab { padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--gravel); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.modal-tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* FORMS */
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-label { font-size: 12px; font-weight: 600; color: var(--ink); letter-spacing: 0.04em; }
+.form-input, .form-textarea {
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 9px 12px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+  color: var(--ink); background: white; width: 100%;
+}
+.form-input:focus, .form-textarea:focus { outline: none; border-color: var(--orange); }
+.form-textarea { resize: vertical; min-height: 70px; }
+.form-hint { font-size: 11px; color: var(--gravel); }
+
+/* ALERT SUBSCRIBE */
+.alert-bar {
+  background: var(--pine);
+  padding: 20px 24px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.alert-bar p { color: white; font-size: 14px; flex: 1; min-width: 200px; }
+.alert-bar p strong { color: var(--hivis); }
+.alert-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.alert-form input {
+  border: 1.5px solid rgba(255,255,255,0.3); border-radius: 6px;
+  padding: 8px 14px; font-size: 14px; background: rgba(255,255,255,0.1);
+  color: white; min-width: 200px;
+}
+.alert-form input::placeholder { color: rgba(255,255,255,0.5); }
+.alert-form input:focus { outline: none; border-color: white; }
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: white;
+  padding: 12px 20px; border-radius: 8px; font-size: 14px;
+  z-index: 999; opacity: 0; transition: opacity 0.25s;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+.toast.error { background: #c0392b; }
+
+/* SELL BANNER */
+.sell-banner {
+  background: var(--ink); padding: 28px 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.sell-banner h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; color: white; }
+.sell-banner p { color: var(--gravel); font-size: 14px; margin-top: 4px; }
+
+/* LOADER */
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 60px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* RESPONSIVE */
+@media (max-width: 600px) {
+  nav { padding: 0 16px; }
+  .filters-bar { padding: 10px 16px; }
+  .sell-banner { text-align: center; justify-content: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-logo">good<span>kit</span></a>
+  <div class="nav-actions">
+    <a href="goodkit-seller-portal.html" class="btn btn-ghost btn-sm">My Portal</a>
+    <a href="#sell" class="btn btn-primary btn-sm">Sell Gear</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero-strip">
+  <h1>gear in. cash out.</h1>
+  <p>The marketplace for cyclists who actually ride stuff — and need to move it.</p>
+  <a href="#sell" class="btn">Start Selling →</a>
+</div>
+
+<!-- ALERT BAR -->
+<div class="alert-bar">
+  <p><strong>Get notified</strong> when new gear drops that matches what you're hunting for.</p>
+  <div class="alert-form">
+    <input type="email" id="alertEmail" placeholder="your@email.com">
+    <button class="btn btn-primary btn-sm" onclick="subscribeAlert()">Alert Me</button>
+  </div>
+</div>
+
+<!-- FILTERS -->
+<div class="filters-bar">
+  <div class="search-wrap">
+    <svg class="search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M9 9l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <input class="search-input" type="text" id="searchInput" placeholder="Search gear…" oninput="filterListings()">
+  </div>
+  <select class="filter-select" id="catFilter" onchange="filterListings()">
+    <option value="">All Categories</option>
+    <option>Components</option>
+    <option>Apparel</option>
+    <option>Wheels</option>
+    <option>Helmets</option>
+    <option>Shoes</option>
+    <option>Bags & Packs</option>
+    <option>Tools</option>
+    <option>Electronics</option>
+    <option>Other</option>
+  </select>
+  <select class="filter-select" id="condFilter" onchange="filterListings()">
+    <option value="">Any Condition</option>
+    <option>Like New</option>
+    <option>Excellent</option>
+    <option>Good</option>
+    <option>Fair</option>
+  </select>
+  <select class="filter-select" id="sortFilter" onchange="filterListings()">
+    <option value="newest">Newest</option>
+    <option value="price-asc">Price: Low → High</option>
+    <option value="price-desc">Price: High → Low</option>
+  </select>
+  <span class="count-badge" id="countBadge"></span>
+</div>
+
+<!-- LISTINGS -->
+<div class="shop-container">
+  <div id="listingsGrid" class="listings-grid">
+    <div class="spinner"></div>
+  </div>
+</div>
+
+<!-- SELL BANNER -->
+<div class="sell-banner" id="sell">
+  <div>
+    <h2>got gear collecting dust?</h2>
+    <p>List it in minutes. We send the label. You keep 88%.</p>
+  </div>
+  <a href="goodkit-seller-portal.html" class="btn btn-primary">Start Selling →</a>
+</div>
+
+<!-- LISTING MODAL -->
+<div class="modal-overlay" id="listingModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-layout">
+      <div class="modal-photos" id="modalPhotos">
+        <div class="modal-photos-placeholder">🚵</div>
+      </div>
+      <div class="modal-info" id="modalInfo"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CHECKOUT MODAL -->
+<div class="modal-overlay" id="checkoutModal">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" onclick="closeCheckout()">✕</button>
+    <div style="padding:28px;">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:22px;margin-bottom:4px;">Checkout</h2>
+      <p style="color:var(--gravel);font-size:14px;margin-bottom:20px;" id="checkoutItemTitle"></p>
+      <div id="checkoutForm"></div>
+    </div>
+  </div>
+</div>
+
+<!-- OFFER MODAL -->
+<div class="modal-overlay" id="offerModal">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeOffer()">✕</button>
+    <div style="padding:28px;">
+      <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;margin-bottom:4px;">Make an Offer</h2>
+      <p style="color:var(--gravel);font-size:14px;margin-bottom:20px;" id="offerItemTitle"></p>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="form-group">
+          <label class="form-label">Your Name</label>
+          <input class="form-input" type="text" id="offerName" placeholder="Casey Roberts">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" type="email" id="offerEmail" placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Offer Amount</label>
+          <input class="form-input" type="number" id="offerAmount" placeholder="0.00" min="1" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Message (optional)</label>
+          <textarea class="form-textarea" id="offerMessage" placeholder="Any questions or context for the seller…"></textarea>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;" onclick="submitOffer()">Send Offer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stripe.js/v3/stripe.min.js"></script>
+<script>
+const API = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://api.goodkit.com';
+let allListings = [], currentListing = null, stripe = null, cardElement = null;
+
+// ── LOAD LISTINGS ─────────────────────────────────────────────────────────────
+async function loadListings() {
+  try {
+    const res  = await fetch(`${API}/listings`);
+    const data = await res.json();
+    allListings = data.listings || [];
+    filterListings();
+  } catch(e) {
+    document.getElementById('listingsGrid').innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <h3>Can't reach the server</h3>
+        <p>Make sure the GoodKit API is running.</p>
+      </div>`;
+  }
+}
+
+function filterListings() {
+  const q    = document.getElementById('searchInput').value.toLowerCase();
+  const cat  = document.getElementById('catFilter').value;
+  const cond = document.getElementById('condFilter').value;
+  const sort = document.getElementById('sortFilter').value;
+  let items  = allListings.filter(l => {
+    if (cat  && l.category  !== cat)  return false;
+    if (cond && l.condition !== cond) return false;
+    if (q && !l.title.toLowerCase().includes(q) && !l.description?.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (sort === 'price-asc')  items.sort((a,b) => a.price - b.price);
+  if (sort === 'price-desc') items.sort((a,b) => b.price - a.price);
+  document.getElementById('countBadge').textContent = `${items.length} listing${items.length !== 1 ? 's' : ''}`;
+  renderGrid(items);
+}
+
+function renderGrid(listings) {
+  const grid = document.getElementById('listingsGrid');
+  if (!listings.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <h3>nothing here yet.</h3>
+      <p>Be the first to list something — it only takes a few minutes.</p>
+      <a href="goodkit-seller-portal.html" class="btn btn-primary">List Your Gear</a>
+    </div>`;
+    return;
+  }
+  grid.innerHTML = listings.map(l => `
+    <div class="listing-card" onclick="openListing('${l.id}')">
+      <div class="card-photo">
+        ${l.photos && l.photos.length ? `<img src="${API}${l.photos[0]}" alt="${l.title}" loading="lazy">` : `<div class="card-photo-placeholder">🚴</div>`}
+        <div class="card-condition">${l.condition}</div>
+      </div>
+      <div class="card-body">
+        <div class="card-category">${l.category}</div>
+        <div class="card-title">${l.title}</div>
+        <div class="card-footer">
+          <div class="card-price">$${Number(l.price).toFixed(0)}</div>
+          <div class="card-shipping">${l.shipping_estimate > 0 ? `+$${Number(l.shipping_estimate).toFixed(0)} ship` : 'free ship'}</div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ── LISTING MODAL ─────────────────────────────────────────────────────────────
+async function openListing(id) {
+  try {
+    const res  = await fetch(`${API}/listings/${id}`);
+    const data = await res.json();
+    currentListing = data.listing;
+    renderModal(currentListing);
+    document.getElementById('listingModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  } catch(e) { showToast('Could not load listing', 'error'); }
+}
+
+function renderModal(l) {
+  const photos = document.getElementById('modalPhotos');
+  photos.innerHTML = l.photos && l.photos.length
+    ? `<img src="${API}${l.photos[0]}" alt="${l.title}" style="width:100%;height:100%;object-fit:cover;">`
+    : `<div class="modal-photos-placeholder">🚵</div>`;
+
+  const total = (l.price + (l.shipping_estimate || 0)).toFixed(2);
+  const sellerNet = (l.price * 0.88).toFixed(2);
+
+  document.getElementById('modalInfo').innerHTML = `
+    <div class="modal-category">${l.category}</div>
+    <div class="modal-title">${l.title}</div>
+    <div class="modal-price-row">
+      <div class="modal-price">$${Number(l.price).toFixed(0)}</div>
+      ${l.shipping_estimate > 0 ? `<div class="modal-shipping-tag">+$${Number(l.shipping_estimate).toFixed(0)} shipping</div>` : `<div class="modal-shipping-tag">free shipping</div>`}
+    </div>
+    <div><span class="modal-condition-badge">${l.condition}</span></div>
+
+    <div class="modal-tabs">
+      <div class="modal-tab active" onclick="switchTab(this,'desc')">Description</div>
+      <div class="modal-tab" onclick="switchTab(this,'message')">Ask Seller</div>
+    </div>
+
+    <div class="tab-panel active" id="tab-desc">
+      <p class="modal-desc">${l.description || 'No description provided.'}</p>
+      <div class="modal-split" style="margin-top:8px;">
+        <div class="modal-split-title">What you pay</div>
+        <div class="modal-split-row"><span>Item price</span><span>$${Number(l.price).toFixed(2)}</span></div>
+        ${l.shipping_estimate > 0 ? `<div class="modal-split-row"><span>Shipping</span><span>$${Number(l.shipping_estimate).toFixed(2)}</span></div>` : ''}
+        <div class="modal-split-row total"><span>Total</span><span>$${total}</span></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-message">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="form-group">
+          <label class="form-label">Your Name</label>
+          <input class="form-input" type="text" id="msgName" placeholder="Casey Roberts">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" type="email" id="msgEmail" placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Question</label>
+          <textarea class="form-textarea" id="msgBody" placeholder="Ask about size, condition, history…"></textarea>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="sendMessage()">Send Message</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="openCheckout()">Buy Now — $${total}</button>
+      <button class="btn btn-outline" onclick="openOffer()">Make an Offer</button>
+    </div>
+
+    <p style="font-size:11px;color:var(--gravel);text-align:center;">seller keeps 88% · secure checkout via Stripe</p>
+  `;
+}
+
+function switchTab(el, name) {
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name)?.classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('listingModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ── CHECKOUT ─────────────────────────────────────────────────────────────────
+function openCheckout() {
+  const l = currentListing;
+  document.getElementById('checkoutItemTitle').textContent = l.title;
+  const total = (l.price + (l.shipping_estimate || 0)).toFixed(2);
+  document.getElementById('checkoutForm').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" type="email" id="buyerEmail" placeholder="you@email.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Card Details</label>
+        <div id="cardElement" style="border:1.5px solid var(--border);border-radius:6px;padding:10px 12px;background:white;"></div>
+        <div id="cardErrors" style="color:#c0392b;font-size:12px;margin-top:4px;"></div>
+      </div>
+      <div class="modal-split">
+        <div class="modal-split-row"><span>Item</span><span>$${Number(l.price).toFixed(2)}</span></div>
+        ${l.shipping_estimate > 0 ? `<div class="modal-split-row"><span>Shipping (prepaid label)</span><span>$${Number(l.shipping_estimate).toFixed(2)}</span></div>` : ''}
+        <div class="modal-split-row total"><span>Total</span><span>$${total}</span></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:15px;" onclick="submitCheckout()" id="payBtn">Pay $${total}</button>
+      <p style="font-size:11px;color:var(--gravel);text-align:center;">Secured by Stripe · Prepaid label emailed to seller</p>
+    </div>`;
+  document.getElementById('checkoutModal').classList.add('open');
+  initStripeElement();
+}
+
+async function initStripeElement() {
+  try {
+    const res  = await fetch(`${API}/checkout`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ listingId: currentListing.id, buyerEmail: '', deliveryType: 'shipping' }) });
+    const data = await res.json();
+    if (!data.publishableKey) return;
+    stripe = Stripe(data.publishableKey);
+    const elements = stripe.elements();
+    cardElement = elements.create('card', { style: { base: { fontFamily: 'DM Sans, sans-serif', fontSize: '14px', color: '#1A1A14' } } });
+    cardElement.mount('#cardElement');
+    cardElement.on('change', e => { document.getElementById('cardErrors').textContent = e.error ? e.error.message : ''; });
+    document.getElementById('payBtn').dataset.secret = data.clientSecret;
+  } catch(e) { console.error('Stripe init failed', e); }
+}
+
+async function submitCheckout() {
+  const email  = document.getElementById('buyerEmail').value.trim();
+  const secret = document.getElementById('payBtn').dataset.secret;
+  if (!email || !secret || !cardElement) return showToast('Fill in your email first', 'error');
+  const btn = document.getElementById('payBtn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+  const { error } = await stripe.confirmCardPayment(secret, { payment_method: { card: cardElement, billing_details: { email } } });
+  if (error) {
+    document.getElementById('cardErrors').textContent = error.message;
+    btn.disabled = false; btn.textContent = `Pay $${(currentListing.price + (currentListing.shipping_estimate||0)).toFixed(2)}`;
+  } else {
+    closeCheckout();
+    showToast('🎉 Payment successful! Seller will ship your gear.');
+    loadListings();
+  }
+}
+
+function closeCheckout() { document.getElementById('checkoutModal').classList.remove('open'); }
+
+// ── OFFERS ────────────────────────────────────────────────────────────────────
+function openOffer() {
+  document.getElementById('offerItemTitle').textContent = currentListing?.title || '';
+  document.getElementById('offerModal').classList.add('open');
+}
+function closeOffer() { document.getElementById('offerModal').classList.remove('open'); }
+
+async function submitOffer() {
+  const name   = document.getElementById('offerName').value.trim();
+  const email  = document.getElementById('offerEmail').value.trim();
+  const amount = document.getElementById('offerAmount').value;
+  const msg    = document.getElementById('offerMessage').value.trim();
+  if (!email || !amount) return showToast('Email and amount required', 'error');
+  try {
+    await fetch(`${API}/offers`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ listingId: currentListing.id, buyerName: name, buyerEmail: email, amount, message: msg }) });
+    closeOffer();
+    showToast('Offer sent! Seller will reply by email.');
+  } catch(e) { showToast('Could not send offer', 'error'); }
+}
+
+// ── MESSAGES ─────────────────────────────────────────────────────────────────
+async function sendMessage() {
+  const name  = document.getElementById('msgName').value.trim();
+  const email = document.getElementById('msgEmail').value.trim();
+  const body  = document.getElementById('msgBody').value.trim();
+  if (!email || !body) return showToast('Email and message required', 'error');
+  try {
+    await fetch(`${API}/messages`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ listingId: currentListing.id, fromEmail: email, fromName: name, fromRole: 'buyer', body }) });
+    showToast('Message sent! Seller will reply by email.');
+    document.getElementById('msgBody').value = '';
+  } catch(e) { showToast('Could not send message', 'error'); }
+}
+
+// ── ALERTS ────────────────────────────────────────────────────────────────────
+async function subscribeAlert() {
+  const email = document.getElementById('alertEmail').value.trim();
+  const cat   = document.getElementById('catFilter').value;
+  if (!email) return showToast('Enter your email first', 'error');
+  try {
+    await fetch(`${API}/alerts/subscribe`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email, category: cat || null }) });
+    showToast('Alert set! We\'ll email you when matching gear drops.');
+    document.getElementById('alertEmail').value = '';
+  } catch(e) { showToast('Could not set alert', 'error'); }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type === 'error' ? ' error' : '');
+  setTimeout(() => { t.className = 'toast'; }, 3500);
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) { closeModal(); closeCheckout(); closeOffer(); } });
+});
+
+// Close on ESC
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeCheckout(); closeOffer(); } });
+
+loadListings();
+</script>
+</body>
+</html>
