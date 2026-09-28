@@ -277,10 +277,20 @@ const API = window.location.hostname==='localhost' ? 'http://localhost:3000' : '
 const SHIP = {xs:6,sm:10,md:16,lg:45};
 let SESSION=null, SELLER=null, photoFiles=[];
 
-(function init(){
+(async function init(){
   const p=new URLSearchParams(window.location.search), tok=p.get('token');
-  if(tok){ saveS(tok); window.history.replaceState({},'',window.location.pathname); loadDash(tok); }
-  else { const s=tryGet(); if(s) loadDash(s); }
+  if(tok){
+    // Magic link token — must verify first to get a session token
+    window.history.replaceState({},'',window.location.pathname);
+    try{
+      const r=await fetch(API+'/seller/auth/verify?token='+encodeURIComponent(tok));
+      const d=await r.json();
+      if(d.success && d.sessionToken){ saveS(d.sessionToken); loadDash(d.sessionToken); }
+      else showLogin();
+    }catch(e){ showLogin(); }
+  } else {
+    const s=tryGet(); if(s) loadDash(s); else showLogin();
+  }
 })();
 
 function tryGet(){ try{return localStorage.getItem('gk_session');}catch(e){return null;} }
