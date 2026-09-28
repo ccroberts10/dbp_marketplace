@@ -1,0 +1,8 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/goodkit-home.html" },
+    { "source": "/marketplace", "destination": "/goodkit-marketplace.html" },
+    { "source": "/sell", "destination": "/goodkit-seller-portal.html" }
+  ]
+}
