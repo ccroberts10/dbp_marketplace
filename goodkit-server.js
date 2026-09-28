@@ -378,7 +378,7 @@ app.get('/seller/portal', (req, res) => {
     const threads = db.prepare("SELECT m.*, l.title as listing_title FROM messages m JOIN listings l ON m.listing_id=l.id WHERE l.seller_email=? OR m.from_email=? ORDER BY m.created_at DESC").all(email, email);
     res.json({
       success: true,
-      seller: { email, name: listings[0]?.seller_name || email, stripe_account_id: listings[0]?.stripe_account_id || null },
+      seller: { email, name: listings[0]?.seller_name || email, stripe_account_id: listings[0]?.stripe_account_id || null, stripe_connected: !!(listings[0]?.stripe_account_id && listings[0].stripe_account_id.startsWith('acct_')) },
       stats: {
         totalEarned:    sales.filter(s => s.status === 'paid_out').reduce((sum, s) => sum + s.seller_payout, 0),
         pendingPayout:  sales.filter(s => s.status === 'delivered').reduce((sum, s) => sum + s.seller_payout, 0),
