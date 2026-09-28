@@ -299,7 +299,7 @@ async function handleMagicLink(req, res) {
     ));
     res.json({ success: true, message: 'Login link sent to ' + email });
   } catch(err) { console.error('Magic link error:', err); res.status(500).json({ error: err.message }); }
-});
+}
 
 app.get('/seller/verify-token', (req, res) => {
   try {
