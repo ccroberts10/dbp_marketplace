@@ -279,7 +279,7 @@ let SESSION=null, SELLER=null, photoFiles=[];
 
 (function init(){
   const p=new URLSearchParams(window.location.search), tok=p.get('token');
-  if(tok) verifyToken(tok);
+  if(tok){ saveS(tok); window.history.replaceState({},'',window.location.pathname); loadDash(tok); }
   else { const s=tryGet(); if(s) loadDash(s); }
 })();
 
@@ -287,24 +287,13 @@ function tryGet(){ try{return localStorage.getItem('gk_session');}catch(e){retur
 function saveS(t){ try{localStorage.setItem('gk_session',t);}catch(e){} }
 function clearS(){ try{localStorage.removeItem('gk_session');}catch(e){} }
 
-async function verifyToken(token){
-  try{
-    const r=await fetch(API+'/seller/auth/verify?token='+token);
-    const d=await r.json();
-    if(!d.sessionToken){showLogin();return;}
-    saveS(d.sessionToken);
-    window.history.replaceState({},'',window.location.pathname);
-    loadDash(d.sessionToken);
-  }catch(e){showLogin();}
-}
-
 async function sendMagicLink(){
   const email=document.getElementById('loginEmail').value.trim();
   if(!email)return showToast('Enter your email','error');
   try{
     const r=await fetch(API+'/seller/auth/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
     const d=await r.json();
-    if(d.ok||d.message){
+    if(d.ok||d.message||d.success){
       document.getElementById('loginView').style.display='none';
       document.getElementById('loginSent').style.display='block';
     }else showToast(d.error||'Error','error');
@@ -325,14 +314,21 @@ function showLogin(){
 async function loadDash(tok){
   SESSION=tok;
   try{
-    const r=await fetch(API+'/seller/me',{headers:{Authorization:'Bearer '+tok}});
+    const r=await fetch(API+'/seller/portal?token='+tok);
     if(!r.ok){clearS();showLogin();return;}
-    SELLER=await r.json();
+    const d=await r.json();
+    if(!d.success){clearS();showLogin();return;}
+    SELLER=d.seller;
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('dashScreen').style.display='block';
     document.getElementById('navEmail').textContent=SELLER.email||'';
     renderStripeBanner();
-    loadDashData();
+    renderStats(d.listings||[], d.sales||[]);
+    renderListings(d.listings||[]);
+    renderOffers(d.offers||[], d.listings||[]);
+    renderMessages(d.threads||[], d.listings||[]);
+    renderSales(d.sales||[]);
+    if(d.stats) renderStatTiles(d.stats);
   }catch(e){showLogin();}
 }
 
@@ -350,28 +346,32 @@ function renderStripeBanner(){
 
 async function connectStripe(){
   try{
-    const r=await fetch(API+'/seller/stripe/connect',{method:'POST',headers:{Authorization:'Bearer '+SESSION}});
+    const r=await fetch(API+'/seller/onboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:SELLER.email,seller_name:SELLER.name||SELLER.email})});
     const d=await r.json();
     if(d.url) window.location.href=d.url;
+    else showToast(d.error||'Could not connect Stripe','error');
   }catch(e){showToast('Could not connect Stripe','error');}
 }
 
 async function loadDashData(){
-  const h={Authorization:'Bearer '+SESSION};
-  const [lR,oR,mR,sR]=await Promise.allSettled([
-    fetch(API+'/seller/listings',{headers:h}),
-    fetch(API+'/seller/offers',{headers:h}),
-    fetch(API+'/seller/messages',{headers:h}),
-    fetch(API+'/seller/sales',{headers:h})
-  ]);
-  async function safe(r){try{return r.status==='fulfilled'&&r.value.ok?(await r.value.json()):{};} catch(e){return {};}}
-  const ld=await safe(lR), od=await safe(oR), md=await safe(mR), sd=await safe(sR);
-  const listings=ld.listings||[], offers=od.offers||[], messages=md.messages||[], sales=sd.sales||[];
-  renderStats(listings,sales);
-  renderListings(listings);
-  renderOffers(offers,listings);
-  renderMessages(messages,listings);
-  renderSales(sales);
+  try{
+    const r=await fetch(API+'/seller/portal?token='+SESSION);
+    if(!r.ok){clearS();showLogin();return;}
+    const d=await r.json();
+    if(!d.success){clearS();showLogin();return;}
+    const listings=d.listings||[], offers=d.offers||[], messages=d.threads||[], sales=d.sales||[];
+    renderStats(listings,sales);
+    renderListings(listings);
+    renderOffers(offers,listings);
+    renderMessages(messages,listings);
+    renderSales(sales);
+    if(d.stats) renderStatTiles(d.stats);
+  }catch(e){console.error('loadDashData error',e);}
+}
+
+function renderStatTiles(stats){
+  if(stats.activeListings!==undefined) document.getElementById('statListings').textContent=stats.activeListings;
+  if(stats.totalEarned!==undefined) document.getElementById('statNet').textContent='$'+stats.totalEarned.toFixed(0);
 }
 
 function renderStats(listings,sales){
@@ -409,9 +409,11 @@ function renderListings(listings){
 async function deleteListing(id,title){
   if(!confirm('Delete "'+title+'"?'))return;
   try{
-    await fetch(API+'/listings/'+id,{method:'DELETE',headers:{Authorization:'Bearer '+SESSION}});
+    const r=await fetch(API+'/listings/'+id,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
     showToast('Listing deleted');loadDashData();
-  }catch(e){showToast('Could not delete','error');}
+  }catch(e){showToast(e.message||'Could not delete','error');}
 }
 
 function renderOffers(offers,listings){
@@ -442,18 +444,22 @@ function renderOffers(offers,listings){
 
 async function respondOffer(id,action){
   try{
-    await fetch(API+'/offers/'+id+'/'+action,{method:'POST',headers:{Authorization:'Bearer '+SESSION}});
+    const r=await fetch(API+'/offers/'+id+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,action})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
     showToast(action==='accept'?'Offer accepted!':'Offer declined');loadDashData();
-  }catch(e){showToast('Error','error');}
+  }catch(e){showToast(e.message||'Error','error');}
 }
 function toggleCounter(id){const d=document.getElementById('co-'+id);d.style.display=d.style.display==='none'?'block':'none';}
 async function submitCounter(id){
   const amt=document.getElementById('ca-'+id).value;
   if(!amt)return;
   try{
-    await fetch(API+'/offers/'+id+'/counter',{method:'POST',headers:{Authorization:'Bearer '+SESSION,'Content-Type':'application/json'},body:JSON.stringify({amount:amt})});
+    const r=await fetch(API+'/offers/'+id+'/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,action:'counter',counterAmount:amt})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
     showToast('Counter sent');loadDashData();
-  }catch(e){showToast('Error','error');}
+  }catch(e){showToast(e.message||'Error','error');}
 }
 
 function renderMessages(messages,listings){
@@ -476,9 +482,11 @@ async function sendReply(id){
   const body=document.getElementById('rep-'+id).value.trim();
   if(!body)return;
   try{
-    await fetch(API+'/messages/'+id+'/reply',{method:'POST',headers:{Authorization:'Bearer '+SESSION,'Content-Type':'application/json'},body:JSON.stringify({body})});
-    showToast('Reply sent');document.getElementById('rep-'+id).value='';
-  }catch(e){showToast('Error','error');}
+    const r=await fetch(API+'/messages/'+id+'/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,body})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
+    showToast('Reply sent');document.getElementById('rep-'+id).value='';loadDashData();
+  }catch(e){showToast(e.message||'Error','error');}
 }
 
 function renderSales(sales){
@@ -538,9 +546,12 @@ async function submitListing(e){
   fd.append('description',document.getElementById('newDesc').value);
   fd.append('weight_tier',document.getElementById('newWeight').value);
   fd.append('shipping_estimate',SHIP[document.getElementById('newWeight').value]||6);
+  fd.append('seller_email',SELLER.email||'');
+  fd.append('seller_name',SELLER.name||SELLER.email||'');
+  fd.append('stripe_account_id',SELLER.stripe_account_id||'');
   photoFiles.forEach(f=>fd.append('photos',f));
   try{
-    const r=await fetch(API+'/listings',{method:'POST',headers:{Authorization:'Bearer '+SESSION},body:fd});
+    const r=await fetch(API+'/listings',{method:'POST',body:fd});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');
     showToast('Listing published!','success');
