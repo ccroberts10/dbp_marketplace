@@ -301,7 +301,7 @@ async function handleMagicLink(req, res) {
   } catch(err) { console.error('Magic link error:', err); res.status(500).json({ error: err.message }); }
 }
 
-app.get('/seller/verify-token', (req, res) => {
+function handleVerifyToken(req, res) {
   try {
     const { token } = req.query;
     if (!token) return res.status(400).json({ error: 'Token required' });
@@ -309,9 +309,15 @@ app.get('/seller/verify-token', (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid or expired link.' });
     if (new Date(session.expires_at) < new Date()) return res.status(401).json({ error: 'This link has expired. Please request a new one.' });
     db.prepare("UPDATE seller_sessions SET used = 1 WHERE token = ?").run(token);
-    res.json({ success: true, email: session.email, role: 'seller' });
+    // Create a persistent session token
+    const sessionToken = uuidv4();
+    const sessionExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    db.prepare("INSERT INTO seller_sessions (id, email, token, role, expires_at, used) VALUES (?, ?, ?, 'seller', ?, 1)").run(uuidv4(), session.email, sessionToken, sessionExpiry);
+    res.json({ success: true, sessionToken, email: session.email, role: 'seller' });
   } catch(err) { res.status(500).json({ error: err.message }); }
-});
+}
+app.get('/seller/verify-token', handleVerifyToken);
+app.get('/seller/auth/verify',  handleVerifyToken);
 
 app.get('/seller/portal', (req, res) => {
   try {
@@ -349,7 +355,7 @@ app.get('/seller/portal', (req, res) => {
     const threads = db.prepare("SELECT m.*, l.title as listing_title FROM messages m JOIN listings l ON m.listing_id=l.id WHERE l.seller_email=? OR m.from_email=? ORDER BY m.created_at DESC").all(email, email);
     res.json({
       success: true,
-      seller: { email, name: listings[0]?.seller_name || email },
+      seller: { email, name: listings[0]?.seller_name || email, stripe_account_id: listings[0]?.stripe_account_id || null },
       stats: {
         totalEarned:    sales.filter(s => s.status === 'paid_out').reduce((sum, s) => sum + s.seller_payout, 0),
         pendingPayout:  sales.filter(s => s.status === 'delivered').reduce((sum, s) => sum + s.seller_payout, 0),
@@ -633,6 +639,47 @@ app.post('/messages', async (req, res) => {
 app.get('/messages/:listingId', (req, res) => {
   try { res.json({ success: true, messages: db.prepare("SELECT * FROM messages WHERE listing_id=? ORDER BY created_at ASC").all(req.params.listingId) }); }
   catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reply to a message thread (seller) — POST /messages/:id/reply {token, body}
+app.post('/messages/:id/reply', async (req, res) => {
+  try {
+    const { token, body } = req.body;
+    if (!token || !body) return res.status(400).json({ error: 'token and body required' });
+    const session = db.prepare("SELECT * FROM seller_sessions WHERE token=? AND used=1").get(token);
+    if (!session) return res.status(401).json({ error: 'Invalid session' });
+    const orig = db.prepare("SELECT * FROM messages WHERE id=?").get(req.params.id);
+    if (!orig) return res.status(404).json({ error: 'Message not found' });
+    const listing = db.prepare("SELECT * FROM listings WHERE id=?").get(orig.listing_id);
+    if (!listing || listing.seller_email !== session.email) return res.status(403).json({ error: 'Unauthorized' });
+    const id = uuidv4();
+    db.prepare("INSERT INTO messages (id,listing_id,offer_id,from_email,from_name,from_role,body) VALUES (?,?,?,?,?,?,?)").run(id, orig.listing_id, orig.offer_id || null, session.email, session.email, 'seller', body);
+    const buyerMsg = db.prepare("SELECT from_email FROM messages WHERE listing_id=? AND from_role='buyer' ORDER BY created_at ASC LIMIT 1").get(orig.listing_id);
+    if (buyerMsg) await sendEmail(buyerMsg.from_email, `Reply about ${listing.title}`, emailTemplate('Message from Seller',
+      `<p style="font-size:15px;color:#1A1A14;margin:0 0 16px;">The seller replied about <strong>${listing.title}</strong>:</p>
+       <div style="background:#E8E0D0;padding:16px 20px;margin-bottom:20px;border-left:3px solid #1A1A14;">
+         <p style="font-size:15px;color:#1A1A14;margin:0;">"${body}"</p>
+       </div>
+       <a href="${BASE_URL}/shop" style="display:inline-block;background:#FF5C1A;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View Listing →</a>`
+    ));
+    res.json({ success: true, messageId: id });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete listing (seller) — DELETE /listings/:id with {token} in body
+// Note: fetch DELETE with a JSON body is supported; we also accept a query param fallback
+app.delete('/listings/:id', async (req, res) => {
+  try {
+    const token = (req.body && req.body.token) || req.query.token;
+    if (!token) return res.status(400).json({ error: 'token required' });
+    const session = db.prepare("SELECT * FROM seller_sessions WHERE token=? AND used=1").get(token);
+    if (!session) return res.status(401).json({ error: 'Invalid session' });
+    const listing = db.prepare("SELECT * FROM listings WHERE id=?").get(req.params.id);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    if (listing.seller_email !== session.email) return res.status(403).json({ error: 'Unauthorized' });
+    db.prepare("UPDATE listings SET status='deleted' WHERE id=?").run(req.params.id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── WEBHOOK ───────────────────────────────────────────────────────────────────
