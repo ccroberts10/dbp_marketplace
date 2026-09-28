@@ -12,10 +12,10 @@ const { S3Client, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/c
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_URL = process.env.BASE_URL || 'https://goodkit.com';
+const BASE_URL = process.env.BASE_URL || 'https://good-kit.com';
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = 'marketplace@goodkit.com';
-const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'casey@goodkit.com';
+const FROM_EMAIL = 'marketplace@good-kit.com';
+const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || 'ccroberts10@gmail.com';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -164,7 +164,11 @@ function calculateSplit(itemPriceCents, shippingCents) {
 
 // ── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: ['https://goodkit.com', 'https://www.goodkit.com', 'http://localhost:3000'],
+  origin: [
+    'https://goodkit.com', 'https://www.goodkit.com',
+    'https://good-kit.com', 'https://www.good-kit.com',
+    'http://localhost:3000'
+  ],
   credentials: true
 }));
 app.use('/webhook', express.raw({ type: 'application/json' }));
@@ -201,7 +205,7 @@ function emailTemplate(title, body) {
     <div style="padding:28px 32px;">${body}</div>
     <div style="background:#E8E0D0;padding:16px 32px;">
       <p style="font-size:11px;color:#888;margin:0;">
-        goodkit.com · <a href="${BASE_URL}" style="color:#FF5C1A;">it's supposed to be fun.</a>
+        good-kit.com · <a href="${BASE_URL}" style="color:#FF5C1A;">it's supposed to be fun.</a>
       </p>
     </div>
   </div>`;
