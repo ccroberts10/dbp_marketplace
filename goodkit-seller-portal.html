@@ -400,20 +400,69 @@ function renderListings(listings){
     return;
   }
   el.innerHTML=listings.map(l=>`
-    <div class="listing-row">
+    <div class="listing-row" id="row-${l.id}">
       <div style="width:52px;height:52px;border-radius:6px;border:1px solid var(--border);overflow:hidden;flex-shrink:0;background:var(--bg-subtle);display:flex;align-items:center;justify-content:center;">
         ${l.photos&&l.photos.length?`<img src="${API+l.photos[0]}" style="width:100%;height:100%;object-fit:cover;" alt="">`:
         `<span style="font-size:22px;">🚴</span>`}
       </div>
       <div class="listing-info">
         <div class="listing-title">${l.title}</div>
-        <div class="listing-meta">${l.category} · <span class="status-badge badge-${l.status==='active'?'active':'sold'}">${l.status}</span></div>
+        <div class="listing-meta">${l.category} · <span class="status-badge badge-${l.status==='active'?'active':'sold'}">${(l.status||'').toUpperCase()}</span></div>
       </div>
       <div class="listing-price">$${Number(l.price).toFixed(0)}</div>
       <div class="listing-actions">
-        <button class="btn btn-danger btn-xs" onclick="deleteListing('${l.id}','${(l.title||'').replace(/'/g,"\\'")}')" >Delete</button>
+        <button class="btn btn-outline btn-xs" onclick="toggleEdit('${l.id}',${Number(l.price).toFixed(2)},'${(l.category||'').replace(/'/g,"\\'")}')">Edit</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteListing('${l.id}','${(l.title||'').replace(/'/g,"\\'")}')">Delete</button>
+      </div>
+    </div>
+    <div id="edit-${l.id}" style="display:none;padding:10px 0 14px 64px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div>
+          <div class="form-label" style="margin-bottom:4px;">Price ($)</div>
+          <input class="form-input" type="number" id="ep-${l.id}" min="1" step="1" style="width:100px;">
+        </div>
+        <div>
+          <div class="form-label" style="margin-bottom:4px;">Category</div>
+          <select class="form-select" id="ec-${l.id}" style="width:160px;">
+            <option>Components</option><option>Apparel</option><option>Wheels</option>
+            <option>Helmets</option><option>Shoes</option><option>Bags &amp; Packs</option>
+            <option>Tools</option><option>Electronics</option><option>Other</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveListing('${l.id}')">Save</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleEdit('${l.id}')">Cancel</button>
       </div>
     </div>`).join('');
+}
+
+function toggleEdit(id, price, cat){
+  const el=document.getElementById('edit-'+id);
+  const open=el.style.display==='none';
+  // close all others
+  document.querySelectorAll('[id^="edit-"]').forEach(e=>e.style.display='none');
+  if(open){
+    el.style.display='block';
+    const pi=document.getElementById('ep-'+id);
+    const ci=document.getElementById('ec-'+id);
+    if(pi) pi.value=price;
+    if(ci){
+      [...ci.options].forEach(o=>{ if(o.value===cat||o.text===cat) o.selected=true; });
+    }
+  }
+}
+
+async function saveListing(id){
+  const price=document.getElementById('ep-'+id)?.value;
+  const category=document.getElementById('ec-'+id)?.value;
+  if(!price||Number(price)<1){showToast('Enter a valid price','error');return;}
+  try{
+    const r=await fetch(API+'/listings/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,price:Number(price),category})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
+    showToast('Listing updated');
+    document.getElementById('edit-'+id).style.display='none';
+    loadDashData();
+  }catch(e){showToast(e.message||'Could not update','error');}
 }
 
 async function deleteListing(id,title){

@@ -682,6 +682,23 @@ app.delete('/listings/:id', async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+app.patch('/listings/:id', (req, res) => {
+  try {
+    const token = (req.body && req.body.token) || req.query.token;
+    if (!token) return res.status(400).json({ error: 'token required' });
+    const session = db.prepare("SELECT * FROM seller_sessions WHERE token=? AND used=1").get(token);
+    if (!session) return res.status(401).json({ error: 'Invalid session' });
+    const listing = db.prepare("SELECT * FROM listings WHERE id=?").get(req.params.id);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    if (listing.seller_email !== session.email) return res.status(403).json({ error: 'Unauthorized' });
+    const { price, category } = req.body;
+    if (price !== undefined && (isNaN(price) || Number(price) < 1)) return res.status(400).json({ error: 'Invalid price' });
+    if (price !== undefined) db.prepare("UPDATE listings SET price=? WHERE id=?").run(Math.round(Number(price) * 100), req.params.id);
+    if (category !== undefined) db.prepare("UPDATE listings SET category=? WHERE id=?").run(category, req.params.id);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── WEBHOOK ───────────────────────────────────────────────────────────────────
 
 app.post('/webhook', async (req, res) => {
