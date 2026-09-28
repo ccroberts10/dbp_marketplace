@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GoodKit — it's supposed to be fun.</title>
+<meta name="description" content="The marketplace for used cycling gear. List in minutes, keep 88%, we handle shipping labels.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --orange: #FF5C1A;
+  --orange-dark: #D94A0E;
+  --ink: #1A1A14;
+  --ink-soft: #3A3A30;
+  --paper: #F5F0E8;
+  --paper-dark: #EDE6D8;
+  --gravel: #8A8678;
+  --pine: #2A4A2E;
+  --pine-light: #3A6B41;
+  --hivis: #D4E600;
+  --hivis-dark: #B8CB00;
+  --white: #FFFFFF;
+  --border: rgba(26,26,20,0.12);
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: var(--paper); color: var(--ink); overflow-x: hidden; }
+
+/* NAV */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 60px;
+  background: rgba(26,26,20,0.94); backdrop-filter: blur(12px);
+  border-bottom: 2px solid var(--orange);
+}
+.nav-logo { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 24px; color: var(--paper); text-decoration: none; letter-spacing: -0.5px; }
+.nav-logo span { color: var(--orange); }
+.nav-links { display: flex; align-items: center; gap: 8px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 7px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; transition: all 0.15s; white-space: nowrap; }
+.btn-primary { background: var(--orange); color: white; }
+.btn-primary:hover { background: var(--orange-dark); }
+.btn-ghost { background: transparent; color: var(--paper); border: 1.5px solid rgba(245,240,232,0.25); }
+.btn-ghost:hover { border-color: var(--paper); }
+.btn-ink { background: var(--ink); color: white; }
+.btn-ink:hover { background: #000; }
+.btn-lg { padding: 14px 28px; font-size: 16px; border-radius: 8px; }
+.btn-outline-paper { background: transparent; color: var(--paper); border: 2px solid var(--paper); }
+.btn-outline-paper:hover { background: var(--paper); color: var(--ink); }
+
+/* HERO */
+.hero {
+  min-height: 100vh;
+  background: var(--ink);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 100px 32px 60px;
+  position: relative; overflow: hidden;
+}
+.hero-bg-texture {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle at 20% 80%, rgba(255,92,26,0.12) 0%, transparent 50%),
+                    radial-gradient(circle at 80% 20%, rgba(42,74,46,0.2) 0%, transparent 50%);
+}
+.hero-inner { position: relative; z-index: 1; max-width: 720px; }
+.hero-eyebrow {
+  display: inline-block;
+  font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--orange); background: rgba(255,92,26,0.12);
+  padding: 5px 12px; border-radius: 4px;
+  margin-bottom: 24px;
+}
+.hero h1 {
+  font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800;
+  font-size: clamp(44px, 8vw, 88px); line-height: 1;
+  color: var(--paper); letter-spacing: -2px;
+  margin-bottom: 28px;
+}
+.hero h1 .accent { color: var(--orange); }
+.hero-sub {
+  font-size: 18px; line-height: 1.65; color: rgba(245,240,232,0.7);
+  max-width: 480px; margin-bottom: 40px;
+}
+.hero-cta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hero-social {
+  margin-top: 60px; padding-top: 28px; border-top: 1px solid rgba(245,240,232,0.1);
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.hero-social-label { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(245,240,232,0.4); }
+.category-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.category-pill {
+  font-size: 12px; color: rgba(245,240,232,0.55);
+  background: rgba(245,240,232,0.07); border: 1px solid rgba(245,240,232,0.1);
+  padding: 4px 12px; border-radius: 20px;
+}
+
+/* HOW IT WORKS */
+.hiw {
+  padding: 100px 32px;
+  background: white;
+}
+.section-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gravel); margin-bottom: 16px; }
+.hiw h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(28px, 4vw, 44px); letter-spacing: -1px; margin-bottom: 60px; max-width: 500px; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+@media (max-width: 700px) { .steps { grid-template-columns: 1fr; gap: 32px; } }
+.step-number { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; color: var(--orange); margin-bottom: 20px; }
+.step-icon { font-size: 36px; margin-bottom: 16px; }
+.step-title { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 22px; margin-bottom: 10px; }
+.step-desc { font-size: 15px; color: var(--ink-soft); line-height: 1.65; }
+
+/* FEE SPLIT */
+.fees {
+  padding: 100px 32px;
+  background: var(--paper);
+}
+.fees-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; max-width: 960px; }
+@media (max-width: 700px) { .fees-inner { grid-template-columns: 1fr; } }
+.fees h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(28px, 4vw, 44px); letter-spacing: -1px; margin-bottom: 16px; }
+.fees-sub { font-size: 16px; color: var(--ink-soft); line-height: 1.65; margin-bottom: 32px; }
+.fee-table { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+.fee-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 15px; }
+.fee-row:last-child { border-bottom: none; }
+.fee-row.highlight { background: var(--ink); color: white; }
+.fee-row.highlight .fee-val { color: var(--hivis); font-family: 'DM Mono', monospace; font-size: 20px; }
+.fee-val { font-family: 'DM Mono', monospace; color: var(--ink); }
+.fee-note { font-size: 11px; color: var(--gravel); margin-top: 12px; }
+
+/* SHIPPING */
+.shipping {
+  background: var(--pine);
+  padding: 80px 32px;
+}
+.shipping h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(26px, 4vw, 40px); color: white; letter-spacing: -1px; margin-bottom: 14px; }
+.shipping-sub { font-size: 16px; color: rgba(255,255,255,0.7); margin-bottom: 44px; max-width: 480px; }
+.label-tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 640px) { .label-tiers { grid-template-columns: repeat(2, 1fr); } }
+.label-tier {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px; padding: 20px 16px; text-align: center;
+}
+.tier-name { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
+.tier-range { font-size: 13px; color: white; margin-bottom: 10px; }
+.tier-price { font-family: 'DM Mono', monospace; font-size: 22px; color: var(--hivis); font-weight: 500; }
+.shipping-note { margin-top: 28px; font-size: 14px; color: rgba(255,255,255,0.55); }
+
+/* CATEGORIES */
+.categories {
+  padding: 100px 32px;
+  background: white;
+}
+.categories h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(28px, 4vw, 40px); letter-spacing: -1px; margin-bottom: 40px; }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.cat-card {
+  background: var(--paper); border-radius: 10px; padding: 20px 16px;
+  text-align: center; text-decoration: none; color: var(--ink);
+  border: 1px solid var(--border); transition: all 0.15s;
+}
+.cat-card:hover { border-color: var(--orange); transform: translateY(-2px); }
+.cat-card .cat-icon { font-size: 28px; margin-bottom: 8px; }
+.cat-card .cat-name { font-size: 13px; font-weight: 600; }
+
+/* APPAREL TEASER */
+.apparel {
+  background: var(--ink);
+  padding: 100px 32px;
+}
+.apparel-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; max-width: 960px; }
+@media (max-width: 700px) { .apparel-inner { grid-template-columns: 1fr; } }
+.apparel h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(28px, 4vw, 44px); color: white; letter-spacing: -1px; margin-bottom: 16px; }
+.apparel-sub { font-size: 16px; color: rgba(245,240,232,0.7); line-height: 1.65; margin-bottom: 32px; }
+.apparel-details { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px; }
+.apparel-details li { font-size: 15px; color: rgba(245,240,232,0.75); display: flex; align-items: flex-start; gap: 10px; }
+.apparel-details li::before { content: '→'; color: var(--orange); flex-shrink: 0; font-weight: 600; }
+.apparel-visual {
+  background: linear-gradient(135deg, var(--pine) 0%, #1A2F1D 100%);
+  border-radius: 16px; aspect-ratio: 4/3;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.jersey-preview {
+  text-align: center; color: white;
+}
+.jersey-preview .jersey-icon { font-size: 80px; line-height: 1; }
+.jersey-preview p { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-top: 12px; }
+.jersey-badge { position: absolute; bottom: 16px; right: 16px; background: var(--hivis); color: var(--ink); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border-radius: 4px; }
+
+/* VOICE / MANIFESTO */
+.manifesto {
+  padding: 100px 32px;
+  background: var(--orange);
+}
+.manifesto-inner { max-width: 700px; }
+.manifesto h2 {
+  font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800;
+  font-size: clamp(32px, 5vw, 60px); color: white;
+  letter-spacing: -2px; line-height: 1.05;
+  margin-bottom: 32px;
+}
+.manifesto-points { display: flex; flex-direction: column; gap: 20px; }
+.manifesto-point { font-size: 18px; color: rgba(255,255,255,0.85); line-height: 1.55; padding-left: 20px; border-left: 3px solid rgba(255,255,255,0.35); }
+.manifesto-tagline { margin-top: 48px; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 28px; color: white; }
+
+/* FINAL CTA */
+.final-cta {
+  padding: 100px 32px;
+  background: var(--paper-dark);
+  text-align: center;
+}
+.final-cta h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: clamp(32px, 5vw, 56px); letter-spacing: -1.5px; margin-bottom: 16px; }
+.final-cta p { font-size: 18px; color: var(--ink-soft); margin-bottom: 36px; }
+.final-cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* FOOTER */
+footer {
+  background: var(--ink);
+  padding: 40px 32px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+}
+.footer-logo { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 18px; color: var(--paper); }
+.footer-logo span { color: var(--orange); }
+.footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.footer-links a { font-size: 13px; color: var(--gravel); text-decoration: none; }
+.footer-links a:hover { color: var(--paper); }
+.footer-copy { font-size: 12px; color: var(--gravel); }
+
+/* RECENT LISTINGS STRIP */
+.listings-strip { padding: 80px 32px; background: var(--paper); }
+.listings-strip h2 { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 28px; letter-spacing: -0.5px; margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; }
+.listings-strip h2 a { font-size: 14px; font-weight: 600; color: var(--orange); text-decoration: none; font-family: 'DM Sans', sans-serif; }
+.strip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.strip-card { background: white; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; text-decoration: none; color: var(--ink); transition: transform 0.15s, box-shadow 0.15s; }
+.strip-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,26,20,0.1); }
+.strip-photo { width: 100%; aspect-ratio: 1; background: var(--paper-dark); overflow: hidden; }
+.strip-photo img { width: 100%; height: 100%; object-fit: cover; }
+.strip-photo-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.strip-body { padding: 10px 12px; }
+.strip-cat { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gravel); }
+.strip-title { font-size: 13px; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strip-price { font-family: 'DM Mono', monospace; font-size: 15px; color: var(--orange); margin-top: 4px; }
+
+@media (max-width: 600px) {
+  .nav { padding: 0 16px; }
+  .hero, .hiw, .fees, .shipping, .categories, .apparel, .manifesto, .final-cta, .listings-strip { padding-left: 16px; padding-right: 16px; }
+  footer { flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <a href="#" class="nav-logo">good<span>kit</span></a>
+  <div class="nav-links">
+    <a href="goodkit-marketplace.html" class="btn btn-ghost" style="font-size:13px;padding:7px 14px;">Shop</a>
+    <a href="goodkit-seller-portal.html" class="btn btn-primary" style="font-size:13px;padding:7px 14px;">Sell Gear</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg-texture"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">P2P cycling gear marketplace</div>
+    <h1>your old stuff<br>someone's <span class="accent">next ride.</span></h1>
+    <p class="hero-sub">GoodKit is where cyclists buy and sell used gear. Prepaid shipping labels, flat 12% fee, no shenanigans.</p>
+    <div class="hero-cta-row">
+      <a href="goodkit-marketplace.html" class="btn btn-primary btn-lg">Shop Gear →</a>
+      <a href="goodkit-seller-portal.html" class="btn btn-outline-paper btn-lg">Start Selling</a>
+    </div>
+    <div class="hero-social">
+      <span class="hero-social-label">What's here</span>
+      <div class="category-pills">
+        <span class="category-pill">Components</span>
+        <span class="category-pill">Helmets</span>
+        <span class="category-pill">Wheels</span>
+        <span class="category-pill">Apparel</span>
+        <span class="category-pill">Shoes</span>
+        <span class="category-pill">Bags</span>
+        <span class="category-pill">Tools</span>
+        <span class="category-pill">Electronics</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RECENT LISTINGS -->
+<section class="listings-strip">
+  <h2>Fresh listings <a href="goodkit-marketplace.html">Browse all →</a></h2>
+  <div class="strip-grid" id="recentGrid">
+    <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--gravel);">Loading gear…</div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="hiw">
+  <div style="max-width:960px;margin:0 auto;">
+    <div class="section-label">How it works</div>
+    <h2>From your garage to someone's <em>trail</em> in three steps.</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">01 —</div>
+        <div class="step-icon">📸</div>
+        <div class="step-title">List it</div>
+        <p class="step-desc">Add photos, set your price, pick a shipping weight. Takes about 3 minutes. No listing fee.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">02 —</div>
+        <div class="step-icon">💸</div>
+        <div class="step-title">Sell it</div>
+        <p class="step-desc">Buyer pays securely through Stripe. You keep 88% — that's it. No hidden cuts, no bidding wars.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">03 —</div>
+        <div class="step-icon">📦</div>
+        <div class="step-title">Ship it</div>
+        <p class="step-desc">We email you a prepaid label the moment the order clears. Pack it up and drop it off. Done.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEE SPLIT -->
+<section class="fees">
+  <div class="fees-inner" style="margin:0 auto;">
+    <div>
+      <div class="section-label">Transparent pricing</div>
+      <h2>You keep 88%.<br>Always.</h2>
+      <p class="fees-sub">eBay takes up to 13.25% and hides fees in final value calculations. GoodKit is one flat rate — sell your $200 fork, walk with $176. No math required.</p>
+      <a href="goodkit-seller-portal.html" class="btn btn-primary btn-lg">Start Selling</a>
+    </div>
+    <div>
+      <div class="fee-table">
+        <div class="fee-row"><span>Your asking price</span><span class="fee-val">$200</span></div>
+        <div class="fee-row"><span>Platform fee (12%)</span><span class="fee-val" style="color:#c0392b;">– $24</span></div>
+        <div class="fee-row"><span>Stripe processing</span><span class="fee-val" style="color:var(--gravel);font-size:12px;">covered by fee</span></div>
+        <div class="fee-row highlight"><span>You receive</span><span class="fee-val">$176</span></div>
+      </div>
+      <p class="fee-note">Compared to eBay's $173.50 on the same item — after their 13.25% fee. And that's not counting their insertion fees on listings over 250/month.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SHIPPING -->
+<section class="shipping">
+  <div style="max-width:960px;margin:0 auto;">
+    <div class="section-label" style="color:rgba(255,255,255,0.4);">Prepaid shipping labels</div>
+    <h2>We handle the label.<br>You handle the tape.</h2>
+    <p class="shipping-sub">Pick your weight tier when you list. Once your item sells, a prepaid label hits your inbox automatically. The buyer pays shipping — it's included in their checkout.</p>
+    <div class="label-tiers">
+      <div class="label-tier">
+        <div class="tier-name">XS</div>
+        <div class="tier-range">0 – 1 lb</div>
+        <div class="tier-price">$6</div>
+      </div>
+      <div class="label-tier">
+        <div class="tier-name">SM</div>
+        <div class="tier-range">1 – 5 lb</div>
+        <div class="tier-price">$10</div>
+      </div>
+      <div class="label-tier">
+        <div class="tier-name">MD</div>
+        <div class="tier-range">5 – 20 lb</div>
+        <div class="tier-price">$16</div>
+      </div>
+      <div class="label-tier">
+        <div class="tier-name">LG</div>
+        <div class="tier-range">20+ lb</div>
+        <div class="tier-price">$45</div>
+      </div>
+    </div>
+    <p class="shipping-note">Helmet? XS. Full suspension fork? MD. Wheelset? LG. When in doubt, round up — labels are generated based on your tier selection.</p>
+  </div>
+</section>
+
+<!-- CATEGORIES -->
+<section class="categories">
+  <div style="max-width:960px;margin:0 auto;">
+    <h2>Everything but the bike.</h2>
+    <div class="cat-grid">
+      <a href="goodkit-marketplace.html?cat=Components" class="cat-card"><div class="cat-icon">⚙️</div><div class="cat-name">Components</div></a>
+      <a href="goodkit-marketplace.html?cat=Helmets" class="cat-card"><div class="cat-icon">🪖</div><div class="cat-name">Helmets</div></a>
+      <a href="goodkit-marketplace.html?cat=Wheels" class="cat-card"><div class="cat-icon">🔵</div><div class="cat-name">Wheels</div></a>
+      <a href="goodkit-marketplace.html?cat=Apparel" class="cat-card"><div class="cat-icon">🧥</div><div class="cat-name">Apparel</div></a>
+      <a href="goodkit-marketplace.html?cat=Shoes" class="cat-card"><div class="cat-icon">👟</div><div class="cat-name">Shoes</div></a>
+      <a href="goodkit-marketplace.html?cat=Bags+%26+Packs" class="cat-card"><div class="cat-icon">🎒</div><div class="cat-name">Bags & Packs</div></a>
+      <a href="goodkit-marketplace.html?cat=Electronics" class="cat-card"><div class="cat-icon">📡</div><div class="cat-name">Electronics</div></a>
+      <a href="goodkit-marketplace.html?cat=Tools" class="cat-card"><div class="cat-icon">🔧</div><div class="cat-name">Tools</div></a>
+    </div>
+  </div>
+</section>
+
+<!-- APPAREL TEASER -->
+<section class="apparel">
+  <div class="apparel-inner" style="margin:0 auto;">
+    <div>
+      <div class="section-label" style="color:rgba(245,240,232,0.4);">GoodKit Apparel — coming soon</div>
+      <h2>kit that doesn't take itself too seriously.</h2>
+      <p class="apparel-sub">We're working on our own line of cycling apparel. Anti-Rapha energy. Actual colors. Made for people who ride, not people who pose.</p>
+      <ul class="apparel-details">
+        <li>Trail Burn orange. You'll be seen.</li>
+        <li>Sizes that fit humans, not racing mannequins.</li>
+        <li>No team logos. No sponsor patches. Just kit.</li>
+        <li>Designed with actual riders — not a brand consultant.</li>
+      </ul>
+      <a href="goodkit-seller-portal.html" class="btn btn-primary btn-lg">Sell Gear in the Meantime →</a>
+    </div>
+    <div class="apparel-visual">
+      <div class="jersey-preview">
+        <div class="jersey-icon">🚵</div>
+        <p>goodkit apparel</p>
+      </div>
+      <div class="jersey-badge">coming 2025</div>
+    </div>
+  </div>
+</section>
+
+<!-- MANIFESTO -->
+<section class="manifesto">
+  <div class="manifesto-inner">
+    <h2>we're not trying to disrupt cycling.</h2>
+    <div class="manifesto-points">
+      <p class="manifesto-point">We just think used gear deserves a better home than a Facebook group with 14 photos and a price listed as "firm, don't lowball me."</p>
+      <p class="manifesto-point">GoodKit is for the rider who buys a fork, hates the travel, and wants to make someone else happy with it. Secure checkout. Prepaid label. Real money in your account.</p>
+      <p class="manifesto-point">No auction BS. No 47 different seller tiers. No "Featured Listing" upsells. Just gear, in and out.</p>
+    </div>
+    <div class="manifesto-tagline">it's supposed to be fun.</div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final-cta">
+  <h2>got gear? make cash.</h2>
+  <p>List in 3 minutes. Keep 88%. Shipping handled.</p>
+  <div class="final-cta-btns">
+    <a href="goodkit-seller-portal.html" class="btn btn-primary btn-lg">List Your Gear →</a>
+    <a href="goodkit-marketplace.html" class="btn btn-ink btn-lg">Shop the Market</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">good<span>kit</span></div>
+  <div class="footer-links">
+    <a href="goodkit-marketplace.html">Shop</a>
+    <a href="goodkit-seller-portal.html">Sell</a>
+    <a href="mailto:hello@goodkit.com">Contact</a>
+  </div>
+  <div class="footer-copy">© 2025 GoodKit. it's supposed to be fun.</div>
+</footer>
+
+<script>
+const API = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://api.goodkit.com';
+
+async function loadRecent() {
+  try {
+    const res  = await fetch(`${API}/listings?limit=6`);
+    const data = await res.json();
+    const listings = (data.listings || []).slice(0, 6);
+    const grid = document.getElementById('recentGrid');
+    if (!listings.length) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--gravel);">
+        Be the first to list something. <a href="goodkit-seller-portal.html" style="color:var(--orange);">List your gear →</a></div>`;
+      return;
+    }
+    grid.innerHTML = listings.map(l => `
+      <a href="goodkit-marketplace.html" class="strip-card">
+        <div class="strip-photo">${l.photos?.length ? `<img src="${API}${l.photos[0]}" alt="${l.title}" loading="lazy">` : `<div class="strip-photo-ph">🚴</div>`}</div>
+        <div class="strip-body">
+          <div class="strip-cat">${l.category}</div>
+          <div class="strip-title">${l.title}</div>
+          <div class="strip-price">$${Number(l.price).toFixed(0)}</div>
+        </div>
+      </a>`).join('');
+  } catch(e) {
+    document.getElementById('recentGrid').innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;">
+      <a href="goodkit-marketplace.html" style="color:var(--orange);font-weight:600;">Browse the marketplace →</a></div>`;
+  }
+}
+
+// Handle ?cat= from category clicks (passes through to marketplace)
+document.querySelectorAll('.cat-card').forEach(a => {
+  a.addEventListener('click', e => {
+    const url = new URL(a.href);
+    const cat = url.searchParams.get('cat');
+    if (cat) {
+      localStorage.setItem('gk_filter_cat', cat);
+    }
+  });
+});
+
+loadRecent();
+</script>
+</body>
+</html>
