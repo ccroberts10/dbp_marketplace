@@ -10,6 +10,19 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="GoodKit">
 <meta name="theme-color" content="#FF5C1A">
+<meta name="description" content="Buy and sell used cycling gear. Bikes, components, apparel, shoes, wheels, and more. Keep 88% of every sale. Free to list.">
+<meta name="keywords" content="used cycling gear, used bike components, used mountain bike gear, used road bike parts, cycling marketplace, buy sell bike gear">
+<link rel="canonical" href="https://good-kit.com/goodkit-marketplace.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="GoodKit — Used Cycling Gear Marketplace">
+<meta property="og:description" content="Buy and sell used cycling gear. Bikes, components, apparel, shoes, wheels, and more. Keep 88% of every sale.">
+<meta property="og:image" content="https://good-kit.com/icon-512.png">
+<meta property="og:url" content="https://good-kit.com/goodkit-marketplace.html">
+<meta property="og:site_name" content="GoodKit">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GoodKit — Used Cycling Gear Marketplace">
+<meta name="twitter:description" content="Buy and sell used cycling gear. Keep 88% of every sale.">
+<meta name="twitter:image" content="https://good-kit.com/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Mono:wght@400;500&display=swap">
 <style>
@@ -272,7 +285,7 @@ function filterListings(){
   let items=allListings.filter(l=>{
     if(cat&&!catMatches(l.category,cat))return false;
     if(cond&&l.condition!==cond)return false;
-    if(q&&!l.title.toLowerCase().includes(q)&&!l.description?.toLowerCase().includes(q))return false;
+    if(q&&!l.title.toLowerCase().includes(q)&&!l.description?.toLowerCase().includes(q)&&!l.keywords?.toLowerCase().includes(q))return false;
     return true;
   });
   if(sort==='price-asc')items.sort((a,b)=>a.price-b.price);
@@ -357,6 +370,9 @@ function renderModal(l){
       <button class="btn btn-outline" onclick="openOffer()">Make an Offer</button>
     </div>
     <div class="modal-fine">seller keeps 88% · secured by Stripe</div>
+    <div style="text-align:center;margin-top:8px;">
+      <a href="https://good-kit.com/listing/${l.id}" target="_blank" style="font-size:11px;color:var(--ink-soft);text-decoration:none;" onclick="event.stopPropagation()">🔗 Share listing</a>
+    </div>
   `;
 }
 

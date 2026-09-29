@@ -334,6 +334,11 @@ nav{position:sticky;top:0;z-index:100;background:var(--ink);display:flex;align-i
           <textarea class="form-textarea" id="newDesc" placeholder="Describe condition, use, specs…" style="min-height:100px;"></textarea>
         </div>
         <div class="form-group">
+          <label class="form-label">Search keywords <span style="font-weight:400;color:var(--ink-soft);font-size:12px;">helps buyers find your listing</span></label>
+          <input class="form-input" type="text" id="newKeywords" placeholder="e.g. Fox, 150mm, 31.6, carbon, XC race">
+          <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">Brand, size, specs, model year — comma separated</div>
+        </div>
+        <div class="form-group">
           <label class="form-label">Shipping weight tier</label>
           <div class="weight-tiers" id="weightTiers">
             <div class="tier-card selected" data-tier="xs" onclick="selectTier(this)">
@@ -898,6 +903,7 @@ async function submitListing(e){
   fd.append('condition',document.getElementById('newCond').value);
   fd.append('price',document.getElementById('newPrice').value);
   fd.append('description',document.getElementById('newDesc').value);
+  fd.append('keywords',document.getElementById('newKeywords').value);
   fd.append('weight_tier',document.getElementById('newWeight').value);
   fd.append('shipping_estimate',SHIP[document.getElementById('newWeight').value]||6);
   fd.append('seller_email',SELLER.email||'');

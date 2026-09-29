@@ -209,6 +209,8 @@ db.exec(`
   `ALTER TABLE sales ADD COLUMN tracking_number TEXT`,
   `ALTER TABLE sales ADD COLUMN label_url TEXT`,
   `ALTER TABLE sales ADD COLUMN tracking_url TEXT`,
+  // SEO: searchable keywords per listing
+  `ALTER TABLE listings ADD COLUMN keywords TEXT DEFAULT ''`,
 ].forEach(sql => { try { db.exec(sql); } catch(e) {} });
 
 // One-time: clear old DBP stripe_account_id values so sellers re-onboard with new GoodKit Stripe account
@@ -519,7 +521,7 @@ app.get('/seller/portal', (req, res) => {
 
 app.post('/listings', upload.array('photos', 8), async (req, res) => {
   try {
-    const { seller_name, seller_email, stripe_account_id: client_stripe_id, title, category, size, description, condition, price, shipping_estimate, weight_oz } = req.body;
+    const { seller_name, seller_email, stripe_account_id: client_stripe_id, title, category, size, description, condition, price, shipping_estimate, weight_oz, keywords } = req.body;
     if (!seller_name || !seller_email || !title || !price) return res.status(400).json({ error: 'Missing required fields' });
     // Fall back to session-stored stripe_account_id if client didn't send one
     const sellerSession = db.prepare("SELECT * FROM seller_sessions WHERE email=? AND used=1 AND stripe_account_id IS NOT NULL AND stripe_account_id != '' ORDER BY created_at DESC LIMIT 1").get(seller_email);
@@ -533,8 +535,8 @@ app.post('/listings', upload.array('photos', 8), async (req, res) => {
     if (!photos.length) return res.status(400).json({ error: 'At least one photo is required' });
     const id       = uuidv4();
     const stripeId = (stripe_account_id && stripe_account_id.trim() !== '') ? stripe_account_id.trim() : null;
-    db.prepare(`INSERT INTO listings (id,seller_name,seller_email,stripe_account_id,title,category,size,description,condition,price,shipping_estimate,weight_oz,photos,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'approved')`)
-      .run(id, seller_name.trim(), seller_email.trim(), stripeId, title.trim(), category || 'Other', size || '', description || '', condition || 'Good', priceInCents, shippingCents, weightOz, JSON.stringify(photos));
+    db.prepare(`INSERT INTO listings (id,seller_name,seller_email,stripe_account_id,title,category,size,description,condition,price,shipping_estimate,weight_oz,photos,status,keywords) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',?)`)
+      .run(id, seller_name.trim(), seller_email.trim(), stripeId, title.trim(), category || 'Other', size || '', description || '', condition || 'Good', priceInCents, shippingCents, weightOz, JSON.stringify(photos), keywords || '');
     const newListing = db.prepare("SELECT * FROM listings WHERE id = ?").get(id);
     await fireListingAlerts(newListing);
     await sendEmail(NOTIFY_EMAIL, `[GoodKit] New listing: ${title}`, `Seller: ${seller_name} · ${seller_email}\nItem: ${title}\nPrice: $${priceInCents/100}\nWeight: ${weightOz}oz`);
@@ -1075,6 +1077,123 @@ app.get('/admin/backups', async (req, res) => {
       .map(f => ({ key: f.Key, size: (f.Size/1024).toFixed(1) + ' KB', lastModified: f.LastModified }));
     res.json({ success: true, count: files.length, backups: files });
   } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── SEO ROUTES ────────────────────────────────────────────────────────────────
+
+const SITE_URL = 'https://good-kit.com';
+
+// Individual listing page — crawlable, OG-tagged, links to marketplace
+app.get('/listing/:id', (req, res) => {
+  try {
+    const listing = db.prepare("SELECT * FROM listings WHERE id=? AND status='approved'").get(req.params.id);
+    if (!listing) return res.status(404).send('<h1>Listing not found</h1>');
+    const photos = JSON.parse(listing.photos || '[]');
+    const price  = (listing.price / 100).toFixed(2);
+    const photo  = photos[0] ? `${SITE_URL}${photos[0]}` : `${SITE_URL}/icon-512.png`;
+    const title  = `${listing.title} — GoodKit`;
+    const desc   = listing.description
+      ? listing.description.slice(0, 160)
+      : `Used ${listing.category} for $${price}. ${listing.condition} condition. Buy on GoodKit, the cycling gear marketplace.`;
+    const keywords = [listing.title, listing.category, listing.condition, ...(listing.keywords || '').split(',').map(k => k.trim()).filter(Boolean)].join(', ');
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <meta name="description" content="${desc}">
+  <meta name="keywords" content="${keywords}">
+  <link rel="canonical" href="${SITE_URL}/listing/${listing.id}">
+  <!-- Open Graph -->
+  <meta property="og:type" content="product">
+  <meta property="og:title" content="${listing.title}">
+  <meta property="og:description" content="${desc}">
+  <meta property="og:image" content="${photo}">
+  <meta property="og:url" content="${SITE_URL}/listing/${listing.id}">
+  <meta property="og:site_name" content="GoodKit">
+  <meta property="product:price:amount" content="${price}">
+  <meta property="product:price:currency" content="USD">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${listing.title}">
+  <meta name="twitter:description" content="${desc}">
+  <meta name="twitter:image" content="${photo}">
+  <!-- JSON-LD Product Schema -->
+  <script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": listing.title,
+    "description": listing.description || desc,
+    "image": photos.map(p => `${SITE_URL}${p}`),
+    "brand": { "@type": "Brand", "name": "GoodKit" },
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "USD",
+      "price": price,
+      "availability": "https://schema.org/InStock",
+      "url": `${SITE_URL}/listing/${listing.id}`,
+      "itemCondition": listing.condition === 'New' ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition"
+    },
+    "keywords": keywords
+  })}</script>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#111;}
+    img{max-width:100%;border-radius:8px;margin-bottom:16px;}
+    h1{font-size:24px;margin:0 0 8px;}
+    .price{font-size:28px;font-weight:700;color:#FF5C1A;margin:8px 0;}
+    .meta{color:#666;font-size:14px;margin-bottom:16px;}
+    .desc{line-height:1.6;margin-bottom:24px;}
+    .btn{display:inline-block;background:#FF5C1A;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;}
+    .keywords{font-size:12px;color:#999;margin-top:24px;}
+  </style>
+</head>
+<body>
+  ${photos[0] ? `<img src="${SITE_URL}${photos[0]}" alt="${listing.title}">` : ''}
+  <h1>${listing.title}</h1>
+  <div class="price">$${price}</div>
+  <div class="meta">${listing.category}${listing.size ? ' · ' + listing.size : ''} · ${listing.condition} condition · Sold by ${listing.seller_name}</div>
+  <div class="desc">${listing.description || ''}</div>
+  <a class="btn" href="${SITE_URL}/goodkit-marketplace.html#${listing.id}">View on GoodKit →</a>
+  ${keywords ? `<div class="keywords">Tags: ${keywords}</div>` : ''}
+</body>
+</html>`);
+  } catch(err) { res.status(500).send('Error loading listing'); }
+});
+
+// Sitemap — includes all active listings
+app.get('/sitemap.xml', (req, res) => {
+  try {
+    const listings = db.prepare("SELECT id, created_at FROM listings WHERE status='approved' ORDER BY created_at DESC LIMIT 1000").all();
+    const urls = [
+      { loc: SITE_URL, priority: '1.0', changefreq: 'daily' },
+      { loc: `${SITE_URL}/goodkit-marketplace.html`, priority: '0.9', changefreq: 'hourly' },
+      ...listings.map(l => ({
+        loc: `${SITE_URL}/listing/${l.id}`,
+        lastmod: l.created_at.split('T')[0],
+        priority: '0.7',
+        changefreq: 'weekly'
+      }))
+    ];
+    res.setHeader('Content-Type', 'application/xml');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map(u => `  <url>
+    <loc>${u.loc}</loc>
+    ${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ''}
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`);
+  } catch(err) { res.status(500).send('Sitemap error'); }
+});
+
+// Robots.txt
+app.get('/robots.txt', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(`User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /seller/\nSitemap: ${SITE_URL}/sitemap.xml\n`);
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────
