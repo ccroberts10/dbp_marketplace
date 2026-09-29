@@ -275,8 +275,8 @@ app.post('/seller/onboard', async (req, res) => {
     });
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `${BASE_URL}/sell?reauth=true&account=${account.id}`,
-      return_url:  `${BASE_URL}/sell?onboarded=true&account=${account.id}`,
+      refresh_url: `${BASE_URL}/goodkit-seller-portal.html?reauth=true&account=${account.id}`,
+      return_url:  `${BASE_URL}/goodkit-seller-portal.html?onboarded=true&account=${account.id}`,
       type: 'account_onboarding',
       collection_options: { fields: 'currently_due', future_requirements: 'omit' }
     });
