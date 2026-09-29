@@ -186,6 +186,34 @@ nav{position:sticky;top:0;z-index:100;background:var(--ink);display:flex;align-i
       <button id="stripeBtn" class="btn btn-primary btn-xs" style="margin-left:auto;" onclick="connectStripe()" hidden>Connect Stripe &rarr;</button>
     </div>
 
+    <div id="shipBanner" class="stripe-banner" style="display:none;">
+      <div id="shipDot" class="stripe-dot"></div>
+      <div id="shipBannerText"></div>
+      <button id="shipBtn" class="btn btn-primary btn-xs" style="margin-left:auto;" onclick="openShipModal()">Add Address →</button>
+    </div>
+
+    <!-- Shipping address modal -->
+    <div id="shipModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;">
+      <div style="background:var(--bg);border-radius:12px;padding:24px;max-width:440px;width:100%;">
+        <h3 style="margin:0 0 4px;font-size:18px;">Shipping Address</h3>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">We'll use this to generate prepaid labels when your gear sells.</p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <input class="form-input" id="shipName" placeholder="Full name" autocomplete="name">
+          <input class="form-input" id="shipStreet1" placeholder="Street address" autocomplete="street-address">
+          <div style="display:grid;grid-template-columns:1fr 80px 100px;gap:8px;">
+            <input class="form-input" id="shipCity" placeholder="City" autocomplete="address-level2">
+            <input class="form-input" id="shipState" placeholder="State" maxlength="2" autocomplete="address-level1">
+            <input class="form-input" id="shipZip" placeholder="ZIP" autocomplete="postal-code">
+          </div>
+          <input class="form-input" id="shipPhone" placeholder="Phone (optional)" type="tel" autocomplete="tel">
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <button class="btn btn-primary" style="flex:1;" onclick="saveShipAddress()">Save Address</button>
+          <button class="btn" onclick="closeShipModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <div class="stats-row">
       <div class="stat-tile"><div class="stat-val" id="statListings">—</div><div class="stat-label">Active listings</div></div>
       <div class="stat-tile"><div class="stat-val" id="statSales">—</div><div class="stat-label">Items sold</div></div>
@@ -437,6 +465,57 @@ function renderStripeBanner(){
     ?'<strong>Stripe connected</strong> — payouts go directly to your account.'
     :'<strong>Connect Stripe</strong> to receive payouts when your gear sells.';
   document.getElementById('stripeBtn').hidden=!!ok;
+  renderShipBanner();
+}
+
+function renderShipBanner(){
+  const addr=SELLER&&SELLER.shipping_address;
+  const banner=document.getElementById('shipBanner');
+  const dot=document.getElementById('shipDot');
+  const text=document.getElementById('shipBannerText');
+  const btn=document.getElementById('shipBtn');
+  banner.style.display='flex';
+  if(addr&&addr.street1){
+    dot.className='stripe-dot ok';
+    banner.className='stripe-banner connected';
+    text.innerHTML=`<strong>Ship from:</strong> ${addr.street1}, ${addr.city}, ${addr.state} ${addr.zip}`;
+    btn.textContent='Update';
+    // Pre-fill form
+    document.getElementById('shipName').value=addr.name||'';
+    document.getElementById('shipStreet1').value=addr.street1||'';
+    document.getElementById('shipCity').value=addr.city||'';
+    document.getElementById('shipState').value=addr.state||'';
+    document.getElementById('shipZip').value=addr.zip||'';
+    document.getElementById('shipPhone').value=addr.phone||'';
+  }else{
+    dot.className='stripe-dot';
+    banner.className='stripe-banner';
+    text.innerHTML='<strong>Add your shipping address</strong> — required to generate prepaid labels when items sell.';
+    btn.textContent='Add Address →';
+  }
+}
+
+function openShipModal(){document.getElementById('shipModal').style.display='flex';}
+function closeShipModal(){document.getElementById('shipModal').style.display='none';}
+
+async function saveShipAddress(){
+  const name=document.getElementById('shipName').value.trim();
+  const street1=document.getElementById('shipStreet1').value.trim();
+  const city=document.getElementById('shipCity').value.trim();
+  const state=document.getElementById('shipState').value.trim().toUpperCase();
+  const zip=document.getElementById('shipZip').value.trim();
+  const phone=document.getElementById('shipPhone').value.trim();
+  if(!name||!street1||!city||!state||!zip)return showToast('All address fields required','error');
+  try{
+    const r=await fetch(API+'/seller/shipping-address',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:SESSION,name,street1,city,state,zip,phone})});
+    const d=await r.json();
+    if(!d.success)return showToast(d.error||'Could not save address','error');
+    SELLER.shipping_address={name,street1,city,state,zip,phone};
+    renderShipBanner();
+    closeShipModal();
+    showToast('Shipping address saved!');
+  }catch(e){showToast('Could not save address','error');}
 }
 
 async function connectStripe(){

@@ -6,9 +6,82 @@ const Database = require('better-sqlite3');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const { v4: uuidv4 } = require('uuid');
 const { Resend } = require('resend');
 const { S3Client, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+
+const SHIPPO_API_KEY = process.env.SHIPPO_API_KEY || '';
+
+// Shippo REST helper — returns parsed JSON or throws
+function shippoRequest(method, endpoint, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const req = https.request({
+      hostname: 'api.goshippo.com',
+      path: endpoint,
+      method,
+      headers: {
+        'Authorization': `ShippoToken ${SHIPPO_API_KEY}`,
+        'Content-Type': 'application/json',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
+      }
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error('Shippo parse error: ' + data)); }
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function createShippingLabel({ fromAddress, toAddress, weightOz, listingTitle }) {
+  // Create shipment and buy cheapest USPS rate
+  const shipment = await shippoRequest('POST', '/shipments/', {
+    address_from: fromAddress,
+    address_to: toAddress,
+    parcels: [{
+      length: '12', width: '10', height: '6',
+      distance_unit: 'in',
+      weight: Math.max(weightOz / 16, 0.1).toFixed(2),
+      mass_unit: 'lb'
+    }],
+    async: false
+  });
+
+  if (!shipment.rates || !shipment.rates.length) throw new Error('No shipping rates returned from Shippo');
+
+  // Pick cheapest USPS rate; fall back to overall cheapest
+  const uspsRates = shipment.rates.filter(r => r.provider === 'USPS');
+  const rates = uspsRates.length ? uspsRates : shipment.rates;
+  rates.sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
+  const cheapest = rates[0];
+
+  // Purchase label
+  const transaction = await shippoRequest('POST', '/transactions/', {
+    rate: cheapest.object_id,
+    label_file_type: 'PDF',
+    async: false
+  });
+
+  if (transaction.status !== 'SUCCESS') {
+    throw new Error('Label purchase failed: ' + (transaction.messages?.[0]?.text || transaction.status));
+  }
+
+  return {
+    labelUrl:       transaction.label_url,
+    trackingNumber: transaction.tracking_number,
+    trackingUrl:    transaction.tracking_url_provider,
+    carrier:        cheapest.provider,
+    service:        cheapest.servicelevel?.name || cheapest.servicelevel_name,
+    rate:           cheapest.amount
+  };
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -121,6 +194,21 @@ db.exec(`
   `ALTER TABLE seller_sessions ADD COLUMN role TEXT DEFAULT 'seller'`,
   `ALTER TABLE listings ADD COLUMN size TEXT DEFAULT ''`,
   `ALTER TABLE seller_sessions ADD COLUMN stripe_account_id TEXT`,
+  // Shippo shipping additions
+  `ALTER TABLE seller_sessions ADD COLUMN ship_name TEXT`,
+  `ALTER TABLE seller_sessions ADD COLUMN ship_street1 TEXT`,
+  `ALTER TABLE seller_sessions ADD COLUMN ship_city TEXT`,
+  `ALTER TABLE seller_sessions ADD COLUMN ship_state TEXT`,
+  `ALTER TABLE seller_sessions ADD COLUMN ship_zip TEXT`,
+  `ALTER TABLE seller_sessions ADD COLUMN ship_phone TEXT`,
+  `ALTER TABLE sales ADD COLUMN buyer_name TEXT`,
+  `ALTER TABLE sales ADD COLUMN buyer_street1 TEXT`,
+  `ALTER TABLE sales ADD COLUMN buyer_city TEXT`,
+  `ALTER TABLE sales ADD COLUMN buyer_state TEXT`,
+  `ALTER TABLE sales ADD COLUMN buyer_zip TEXT`,
+  `ALTER TABLE sales ADD COLUMN tracking_number TEXT`,
+  `ALTER TABLE sales ADD COLUMN label_url TEXT`,
+  `ALTER TABLE sales ADD COLUMN tracking_url TEXT`,
 ].forEach(sql => { try { db.exec(sql); } catch(e) {} });
 
 // One-time: clear old DBP stripe_account_id values so sellers re-onboard with new GoodKit Stripe account
@@ -300,6 +388,20 @@ app.post('/seller/stripe-account', (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// Save seller shipping address (for Shippo label generation)
+app.post('/seller/shipping-address', (req, res) => {
+  try {
+    const { token, name, street1, city, state, zip, phone } = req.body;
+    if (!token || !name || !street1 || !city || !state || !zip) return res.status(400).json({ error: 'All address fields required' });
+    const session = db.prepare("SELECT * FROM seller_sessions WHERE token=? AND used=1").get(token);
+    if (!session) return res.status(401).json({ error: 'Invalid session' });
+    // Update all sessions for this email so address persists across sign-ins
+    db.prepare(`UPDATE seller_sessions SET ship_name=?, ship_street1=?, ship_city=?, ship_state=?, ship_zip=?, ship_phone=? WHERE email=? AND used=1`)
+      .run(name.trim(), street1.trim(), city.trim(), state.trim(), zip.trim(), phone?.trim() || '', session.email);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/seller/status/:accountId', async (req, res) => {
   try {
     const account = await stripe.accounts.retrieve(req.params.accountId);
@@ -383,9 +485,23 @@ app.get('/seller/portal', (req, res) => {
     res.json({
       success: true,
       seller: (() => {
-        const anySession = db.prepare("SELECT stripe_account_id FROM seller_sessions WHERE email=? AND used=1 AND stripe_account_id IS NOT NULL AND stripe_account_id != '' ORDER BY created_at DESC LIMIT 1").get(email);
+        const anySession = db.prepare("SELECT stripe_account_id, ship_name, ship_street1, ship_city, ship_state, ship_zip, ship_phone FROM seller_sessions WHERE email=? AND used=1 AND stripe_account_id IS NOT NULL AND stripe_account_id != '' ORDER BY created_at DESC LIMIT 1").get(email);
+        const addrSession = db.prepare("SELECT ship_name, ship_street1, ship_city, ship_state, ship_zip, ship_phone FROM seller_sessions WHERE email=? AND used=1 AND ship_street1 IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(email);
         const stripeId = listings[0]?.stripe_account_id || session.stripe_account_id || anySession?.stripe_account_id || null;
-        return { email, name: listings[0]?.seller_name || email, stripe_account_id: stripeId, stripe_connected: !!(stripeId && stripeId.startsWith('acct_')) };
+        return {
+          email,
+          name: listings[0]?.seller_name || email,
+          stripe_account_id: stripeId,
+          stripe_connected: !!(stripeId && stripeId.startsWith('acct_')),
+          shipping_address: addrSession ? {
+            name:    addrSession.ship_name,
+            street1: addrSession.ship_street1,
+            city:    addrSession.ship_city,
+            state:   addrSession.ship_state,
+            zip:     addrSession.ship_zip,
+            phone:   addrSession.ship_phone
+          } : null
+        };
       })(),
       stats: {
         totalEarned:    sales.filter(s => s.status === 'paid_out').reduce((sum, s) => sum + s.seller_payout, 0),
@@ -505,7 +621,7 @@ app.get('/alerts/unsubscribe', (req, res) => {
 // DO NOT add amount to transfer_data — scopes the PI to connected account and breaks confirmCardPayment
 app.post('/checkout', async (req, res) => {
   try {
-    const { listingId, buyerEmail, deliveryType } = req.body;
+    const { listingId, buyerEmail, deliveryType, buyerName, buyerStreet1, buyerCity, buyerState, buyerZip } = req.body;
     const listing = db.prepare("SELECT * FROM listings WHERE id=? AND status='approved'").get(listingId);
     if (!listing) return res.status(404).json({ error: 'Listing not found or no longer available' });
 
@@ -542,8 +658,10 @@ app.post('/checkout', async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create(piParams);
 
     const saleId = uuidv4();
-    db.prepare(`INSERT INTO sales (id,listing_id,buyer_email,payment_intent_id,amount,seller_payout,platform_payout,delivery_type,label_tier) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .run(saleId, listingId, buyerEmail, paymentIntent.id, listing.price,
+    db.prepare(`INSERT INTO sales (id,listing_id,buyer_email,buyer_name,buyer_street1,buyer_city,buyer_state,buyer_zip,payment_intent_id,amount,seller_payout,platform_payout,delivery_type,label_tier) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(saleId, listingId, buyerEmail,
+        buyerName || '', buyerStreet1 || '', buyerCity || '', buyerState || '', buyerZip || '',
+        paymentIntent.id, listing.price,
         Math.round(split.sellerNet * 100),
         Math.round(split.platformFee * 100),
         deliveryType || 'shipping',
@@ -753,20 +871,81 @@ app.post('/webhook', async (req, res) => {
     const sale    = db.prepare("SELECT * FROM sales WHERE payment_intent_id=?").get(pi.id);
 
     if (listing && sale) {
-      const deliveryMsg = sale.delivery_type === 'pickup'
-        ? '📍 Buyer will pick up — arrange directly with them.'
-        : `📦 A prepaid shipping label will be emailed to you shortly. Drop it off at any USPS/UPS location.`;
+      const isPickup = sale.delivery_type === 'pickup';
+      let labelUrl = null, trackingNumber = null, trackingUrl = null;
+
+      if (!isPickup && SHIPPO_API_KEY) {
+        try {
+          // Look up seller's saved shipping address
+          const sellerAddr = db.prepare("SELECT ship_name, ship_street1, ship_city, ship_state, ship_zip, ship_phone FROM seller_sessions WHERE email=? AND used=1 AND ship_street1 IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(listing.seller_email);
+          if (sellerAddr && sale.buyer_street1) {
+            const label = await createShippingLabel({
+              fromAddress: {
+                name:    sellerAddr.ship_name,
+                street1: sellerAddr.ship_street1,
+                city:    sellerAddr.ship_city,
+                state:   sellerAddr.ship_state,
+                zip:     sellerAddr.ship_zip,
+                phone:   sellerAddr.ship_phone || '',
+                country: 'US'
+              },
+              toAddress: {
+                name:    sale.buyer_name || sale.buyer_email,
+                street1: sale.buyer_street1,
+                city:    sale.buyer_city,
+                state:   sale.buyer_state,
+                zip:     sale.buyer_zip,
+                country: 'US'
+              },
+              weightOz: listing.weight_oz || 16,
+              listingTitle: listing.title
+            });
+            labelUrl       = label.labelUrl;
+            trackingNumber = label.trackingNumber;
+            trackingUrl    = label.trackingUrl;
+            db.prepare("UPDATE sales SET label_url=?, tracking_number=?, tracking_url=? WHERE id=?").run(labelUrl, trackingNumber, trackingUrl, sale.id);
+            console.log(`Label generated: ${trackingNumber} (${label.carrier} ${label.service} $${label.rate})`);
+          } else {
+            console.warn('Shippo label skipped — missing seller address or buyer address');
+          }
+        } catch(shipErr) {
+          console.error('Shippo label error:', shipErr.message);
+        }
+      }
+
+      // Email seller
+      const sellerLabelSection = isPickup
+        ? `<p style="font-size:13px;color:#555;margin:8px 0 0;">📍 Buyer will pick up — coordinate directly with them.</p>`
+        : labelUrl
+          ? `<p style="font-size:13px;color:#555;margin:8px 0 0;">📦 Your prepaid shipping label is ready:</p>
+             <a href="${labelUrl}" style="display:inline-block;margin-top:8px;background:#1A1A14;color:#FF5C1A;padding:10px 20px;font-size:13px;font-weight:600;text-decoration:none;">Download Label →</a>
+             <p style="font-size:12px;color:#888;margin:8px 0 0;">Tracking: ${trackingNumber}<br>Drop off at any USPS location.</p>`
+          : `<p style="font-size:13px;color:#555;margin:8px 0 0;">📦 A shipping label will be sent separately. Check back in a moment.</p>`;
 
       await sendEmail(listing.seller_email, `Your ${listing.title} sold! 🎉`, emailTemplate('Item Sold!',
         `<p style="font-size:15px;color:#1A1A14;margin:0 0 16px;">Hi ${listing.seller_name}, your <strong>${listing.title}</strong> just sold!</p>
          <div style="background:#E8E0D0;padding:16px 20px;margin-bottom:20px;">
            <p style="font-size:13px;color:#888;margin:0 0 4px;">Your payout</p>
            <p style="font-size:28px;font-weight:700;color:#1A1A14;margin:0;">$${(sale.seller_payout/100).toFixed(2)}</p>
-           <p style="font-size:12px;color:#888;margin:8px 0 0;">${deliveryMsg}</p>
-           <p style="font-size:12px;color:#888;margin:4px 0 0;">Transferred automatically 72 hours after delivery confirmation.</p>
+           ${sellerLabelSection}
+           <p style="font-size:12px;color:#888;margin:8px 0 0;">Payout transferred automatically 72 hours after delivery confirmation.</p>
          </div>`
       ));
-      await sendEmail(NOTIFY_EMAIL, `[GoodKit] SOLD: ${listing.title}`, `Seller: ${listing.seller_email}\nPayout: $${(sale.seller_payout/100).toFixed(2)}\nLabel tier: ${sale.label_tier}`);
+
+      // Email buyer with tracking if we got it
+      if (!isPickup && trackingNumber) {
+        await sendEmail(sale.buyer_email, `Your ${listing.title} is on its way!`, emailTemplate('Order Shipped 📦',
+          `<p style="font-size:15px;color:#1A1A14;margin:0 0 16px;">Great news — your <strong>${listing.title}</strong> has been shipped!</p>
+           <div style="background:#E8E0D0;padding:16px 20px;margin-bottom:20px;">
+             <p style="font-size:13px;color:#888;margin:0 0 4px;">Tracking number</p>
+             <p style="font-size:18px;font-weight:700;color:#1A1A14;margin:0 0 10px;">${trackingNumber}</p>
+             ${trackingUrl ? `<a href="${trackingUrl}" style="display:inline-block;background:#FF5C1A;color:white;padding:10px 20px;font-size:13px;font-weight:600;text-decoration:none;">Track Package →</a>` : ''}
+           </div>
+           <p style="font-size:12px;color:#888;margin:0;">Questions? Reply to this email.</p>`
+        ));
+      }
+
+      await sendEmail(NOTIFY_EMAIL, `[GoodKit] SOLD: ${listing.title}`, `Seller: ${listing.seller_email}\nPayout: $${(sale.seller_payout/100).toFixed(2)}\nLabel: ${labelUrl || 'not generated'}\nTracking: ${trackingNumber || 'n/a'}`);
     }
     console.log('Sold:', listingId);
   }
