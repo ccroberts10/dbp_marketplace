@@ -407,7 +407,9 @@ Return ONLY valid JSON with these exact fields:
   "price_note": "one sentence explaining the price estimate"
 }
 
-If you cannot identify the item clearly, still return JSON but set title to "Used Cycling Component" and category to "Other".`
+If you cannot identify the item clearly, still return JSON but set title to "Used Cycling Component" and category to "Other".
+
+IMPORTANT: Return raw JSON only — no markdown, no code fences, no explanation. Start your response with { and end with }.`
           }
         ]
       }]
@@ -417,9 +419,19 @@ If you cannot identify the item clearly, still return JSON but set title to "Use
 
     const text = response.content?.[0]?.text || '';
     // Extract JSON from response (strip any markdown fences)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in AI response');
-    const result = JSON.parse(jsonMatch[0]);
+    // Strip markdown code fences if Claude wrapped the JSON
+    const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '');
+    const jsonMatch = stripped.match(/\{[\s\S]*?\}/s) || stripped.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in AI response: ' + text.slice(0, 200));
+    let result;
+    try { result = JSON.parse(jsonMatch[0]); }
+    catch(parseErr) {
+      // Try extracting the largest {...} block
+      const allMatches = [...stripped.matchAll(/\{[\s\S]*\}/g)];
+      const longest = allMatches.sort((a,b) => b[0].length - a[0].length)[0];
+      if (!longest) throw new Error('JSON parse failed: ' + parseErr.message);
+      result = JSON.parse(longest[0]);
+    }
 
     res.json({ success: true, ...result });
   } catch(err) {
