@@ -967,6 +967,7 @@ async function submitListing(e){
   if(!titleVal){showToast('Please add a title','error');return;}
   if(!priceVal||parseFloat(priceVal)<1){showToast('Price must be at least $1','error');return;}
   if(!photoFiles.length){showToast('Please add at least one photo','error');return;}
+  if(!SELLER?.stripe_connected){showToast('Connect Stripe first to receive payouts','error');return;}
   const btn=document.getElementById('submitBtn');
   btn.disabled=true;btn.textContent='Publishing…';
   const fd=new FormData();
@@ -985,7 +986,8 @@ async function submitListing(e){
   photoFiles.forEach(f=>fd.append('photos',f));
   try{
     const r=await fetch(API+'/listings',{method:'POST',body:fd});
-    const d=await r.json();
+    let d;
+    try { d=await r.json(); } catch(_){ throw new Error('Server error — please try again in a moment'); }
     if(!r.ok)throw new Error(d.error||'Error');
     showToast('Listing published!','success');
     btn.disabled=false;btn.textContent='Publish Listing';
