@@ -246,13 +246,31 @@ async function loadListings(){
   }
 }
 
+// Map top-level filter groups to subcategories stored on listings
+const CAT_GROUPS={
+  'Components':['Chains','Cassettes','Chainrings','Derailleurs','Shifters','Cranks','Bottom Brackets','Cables & Housing','Brake Levers','Brake Calipers','Rotors','Brake Pads','Brake Hoses','Handlebars','Stems','Grips','Bar Tape','Headsets','Saddles','Seatposts','Dropper Posts','Flat Pedals','Clipless Pedals'],
+  'Apparel':['Jerseys','Bibs & Shorts','Jackets','Base Layers','Socks','Gloves'],
+  'Wheels':['Wheels','Tires','Tubes','Hubs','Rims'],
+  'Helmets':['Helmets','Pads & Protection'],
+  'Shoes':['MTB Shoes','Road Shoes','Casual Cycling Shoes'],
+  'Bags & Packs':['Hydration Packs','Frame Bags','Backpacks','Hip Packs'],
+  'Tools':['Tools'],
+  'Electronics':['Electronics','Lights','Computers & GPS'],
+  'Other':['Other','Forks','Rear Shocks','Suspension Parts','Sunglasses','Goggles']
+};
+function catMatches(listingCat, filterCat){
+  if(!filterCat)return true;
+  if(listingCat===filterCat)return true;
+  const subs=CAT_GROUPS[filterCat];
+  return subs?subs.includes(listingCat):false;
+}
 function filterListings(){
   const q=document.getElementById('searchInput').value.toLowerCase();
   const cat=document.getElementById('catFilter').value;
   const cond=document.getElementById('condFilter').value;
   const sort=document.getElementById('sortFilter').value;
   let items=allListings.filter(l=>{
-    if(cat&&l.category!==cat)return false;
+    if(cat&&!catMatches(l.category,cat))return false;
     if(cond&&l.condition!==cond)return false;
     if(q&&!l.title.toLowerCase().includes(q)&&!l.description?.toLowerCase().includes(q))return false;
     return true;
