@@ -383,7 +383,8 @@ app.get('/seller/portal', (req, res) => {
     res.json({
       success: true,
       seller: (() => {
-        const stripeId = listings[0]?.stripe_account_id || session.stripe_account_id || null;
+        const anySession = db.prepare("SELECT stripe_account_id FROM seller_sessions WHERE email=? AND used=1 AND stripe_account_id IS NOT NULL AND stripe_account_id != '' ORDER BY created_at DESC LIMIT 1").get(email);
+        const stripeId = listings[0]?.stripe_account_id || session.stripe_account_id || anySession?.stripe_account_id || null;
         return { email, name: listings[0]?.seller_name || email, stripe_account_id: stripeId, stripe_connected: !!(stripeId && stripeId.startsWith('acct_')) };
       })(),
       stats: {
@@ -405,7 +406,7 @@ app.post('/listings', upload.array('photos', 8), async (req, res) => {
     const { seller_name, seller_email, stripe_account_id: client_stripe_id, title, category, size, description, condition, price, shipping_estimate, weight_oz } = req.body;
     if (!seller_name || !seller_email || !title || !price) return res.status(400).json({ error: 'Missing required fields' });
     // Fall back to session-stored stripe_account_id if client didn't send one
-    const sellerSession = db.prepare("SELECT * FROM seller_sessions WHERE email=? AND used=1 ORDER BY created_at DESC LIMIT 1").get(seller_email);
+    const sellerSession = db.prepare("SELECT * FROM seller_sessions WHERE email=? AND used=1 AND stripe_account_id IS NOT NULL AND stripe_account_id != '' ORDER BY created_at DESC LIMIT 1").get(seller_email);
     const stripe_account_id = client_stripe_id || sellerSession?.stripe_account_id || null;
     if (!stripe_account_id) return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     const priceInCents  = Math.round(parseFloat(price) * 100);
