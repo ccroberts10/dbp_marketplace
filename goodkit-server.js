@@ -338,6 +338,96 @@ async function fireListingAlerts(listing) {
   } catch(err) { console.error('Alert fire error:', err.message); }
 }
 
+// ── AI LISTING ASSISTANT ──────────────────────────────────────────────────────
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+
+function claudeRequest(body) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(payload)
+      }
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch(e) { reject(new Error('Claude parse error: ' + data)); }
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+// POST /ai/analyze-listing — accepts one photo (multipart), returns AI-generated listing fields
+app.post('/ai/analyze-listing', upload.single('photo'), async (req, res) => {
+  try {
+    if (!ANTHROPIC_API_KEY) return res.status(503).json({ error: 'AI assist not configured' });
+    if (!req.file) return res.status(400).json({ error: 'Photo required' });
+
+    const imageData = fs.readFileSync(req.file.path).toString('base64');
+    const mimeType  = req.file.mimetype || 'image/jpeg';
+
+    // Clean up temp file
+    fs.unlink(req.file.path, () => {});
+
+    const response = await claudeRequest({
+      model: 'claude-opus-4-5',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: mimeType, data: imageData }
+          },
+          {
+            type: 'text',
+            text: `You are an expert at listing used cycling gear for sale. Analyze this photo and generate a marketplace listing.
+
+Return ONLY valid JSON with these exact fields:
+{
+  "title": "concise product title (brand + model + key spec, 4-8 words)",
+  "category": "one of: Chains, Cassettes, Chainrings, Derailleurs, Shifters, Cranks, Bottom Brackets, Cables & Housing, Brake Levers, Brake Calipers, Rotors, Brake Pads, Brake Hoses, Handlebars, Stems, Grips, Bar Tape, Headsets, Saddles, Seatposts, Dropper Posts, Flat Pedals, Clipless Pedals, Forks, Rear Shocks, Suspension Parts, Wheels, Tires, Tubes, Hubs, Rims, Jerseys, Bibs & Shorts, Jackets, Base Layers, Socks, Gloves, Helmets, Pads & Protection, MTB Shoes, Road Shoes, Casual Cycling Shoes, Hydration Packs, Frame Bags, Saddle Bags, Handlebar Bags, Backpacks, Hip Packs, Tools, Stands & Workstands, Pumps, Lube & Cleaners, Electronics, Lights, Bike Computers, GPS Units, Heart Rate Monitors, Power Meters, Sensors & Accessories, Smart Trainers, Sunglasses, Goggles, Frames, Complete Bikes, Other",
+  "condition": "one of: New, Like New, Good, Fair, Poor",
+  "description": "2-4 sentences describing what you see — brand, model, visible condition, notable features. Be honest about any visible wear.",
+  "keywords": "comma-separated search terms: brand, model, size/spec details, compatible standards",
+  "price_min": estimated low end resale price in USD as integer,
+  "price_max": estimated high end resale price in USD as integer,
+  "price_note": "one sentence explaining the price estimate"
+}
+
+If you cannot identify the item clearly, still return JSON but set title to "Used Cycling Component" and category to "Other".`
+          }
+        ]
+      }]
+    });
+
+    if (response.error) throw new Error(response.error.message || 'Claude API error');
+
+    const text = response.content?.[0]?.text || '';
+    // Extract JSON from response (strip any markdown fences)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in AI response');
+    const result = JSON.parse(jsonMatch[0]);
+
+    res.json({ success: true, ...result });
+  } catch(err) {
+    console.error('AI analyze error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── ROUTES ───────────────────────────────────────────────────────────────────
 
 app.get('/', (req, res) => res.json({ status: 'GoodKit Marketplace running' }));

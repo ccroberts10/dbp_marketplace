@@ -245,6 +245,11 @@ nav{position:sticky;top:0;z-index:100;background:var(--ink);display:flex;align-i
             <div class="form-hint" style="margin-top:3px;">Up to 8 photos, 10MB each</div>
           </div>
           <div class="photo-previews" id="photoPreviews"></div>
+          <div id="aiAssistWrap" style="display:none;margin-top:10px;">
+            <button type="button" class="btn btn-primary btn-sm" id="aiAssistBtn" onclick="runAiAssist()" style="background:linear-gradient(135deg,#7c3aed,#FF5C1A);border:none;">✨ AI Assist — fill listing from photo</button>
+            <div id="aiAssistStatus" style="font-size:12px;color:var(--ink-soft);margin-top:6px;display:none;"></div>
+          </div>
+          <div id="aiPriceHint" style="display:none;margin-top:8px;padding:10px 12px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:6px;font-size:13px;line-height:1.5;"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Title</label>
@@ -837,6 +842,63 @@ function renderPreviews(){
     img.onclick=()=>{photoFiles.splice(i,1);renderPreviews();};
     el.appendChild(img);
   });
+  // Show/hide AI assist button
+  const wrap=document.getElementById('aiAssistWrap');
+  if(wrap) wrap.style.display=photoFiles.length?'':'none';
+}
+
+async function runAiAssist(){
+  if(!photoFiles.length)return;
+  const btn=document.getElementById('aiAssistBtn');
+  const status=document.getElementById('aiAssistStatus');
+  btn.disabled=true;btn.textContent='✨ Analyzing photo…';
+  status.style.display='block';status.textContent='Reading your photo with AI…';
+
+  try{
+    const fd=new FormData();
+    fd.append('photo',photoFiles[0]);
+    const r=await fetch(API+'/ai/analyze-listing',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'AI error');
+
+    // Fill form fields (only if currently empty or if user confirms overwrite)
+    const titleEl=document.getElementById('newTitle');
+    const descEl=document.getElementById('newDesc');
+    const keyEl=document.getElementById('newKeywords');
+    const condEl=document.getElementById('newCond');
+    const catEl=document.getElementById('newCat');
+
+    if(d.title) titleEl.value=d.title;
+    if(d.description) descEl.value=d.description;
+    if(d.keywords) keyEl.value=d.keywords;
+
+    // Set condition
+    if(d.condition){
+      [...condEl.options].forEach(o=>{if(o.value===d.condition||o.text===d.condition)o.selected=true;});
+    }
+    // Set category
+    if(d.category){
+      [...catEl.options].forEach(o=>{if(o.text===d.category||o.value===d.category)o.selected=true;});
+      updateSizeField();
+    }
+
+    // Show price hint
+    if(d.price_min||d.price_max){
+      const hint=document.getElementById('aiPriceHint');
+      hint.style.display='block';
+      hint.innerHTML=`<strong>💰 Suggested price: $${d.price_min}–$${d.price_max}</strong><br><span style="color:var(--ink-soft)">${d.price_note||''}</span>`;
+    }
+
+    status.style.display='none';
+    btn.textContent='✨ Re-analyze photo';
+    btn.disabled=false;
+    showToast('Listing filled from photo!','success');
+    updateFeeCalc();
+  }catch(err){
+    status.textContent='AI assist failed: '+err.message;
+    btn.textContent='✨ AI Assist — fill listing from photo';
+    btn.disabled=false;
+  }
 }
 
 function selectTier(el){
