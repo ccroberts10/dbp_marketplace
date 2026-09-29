@@ -585,7 +585,7 @@ function renderListings(listings){
       </div>
       <div class="listing-info">
         <div class="listing-title">${l.title}</div>
-        <div class="listing-meta">${l.category}${l.size?' · '+l.size:''} · <span class="status-badge badge-${l.status==='active'?'active':'sold'}">${(l.status||'').toUpperCase()}</span></div>
+        <div class="listing-meta">${l.category}${l.size?' · '+l.size:''} · <span class="status-badge badge-${l.status==='active'?'active':'sold'}">${(l.status||'').toUpperCase()}</span>${!l.keywords?` · <span style="color:#c17900;font-size:11px;font-weight:600;">⚠ Add keywords to get found</span>`:`<span style="font-size:11px;color:var(--ink-soft)"> · 🔍 ${l.keywords}</span>`}</div>
       </div>
       <div class="listing-price">$${Number(l.price).toFixed(0)}</div>
       <div class="listing-actions">
@@ -669,6 +669,10 @@ function renderListings(listings){
         <button class="btn btn-primary btn-sm" onclick="saveListing('${l.id}')">Save</button>
         <button class="btn btn-outline btn-sm" onclick="toggleEdit('${l.id}')">Cancel</button>
       </div>
+      <div style="margin-top:10px;">
+        <div class="form-label" style="margin-bottom:4px;">Search keywords <span style="font-weight:400;color:var(--ink-soft);font-size:11px;">— helps buyers find this listing</span></div>
+        <input class="form-input" type="text" id="ek-${l.id}" value="${(l.keywords||'').replace(/"/g,'&quot;')}" placeholder="e.g. Fox, 150mm, 31.6, carbon, 2023 — brand, size, specs">
+      </div>
     </div>`).join('');
 }
 
@@ -710,9 +714,10 @@ async function saveListing(id){
   const price=document.getElementById('ep-'+id)?.value;
   const category=document.getElementById('ec-'+id)?.value;
   const size=document.getElementById('esv-'+id)?.value||'';
+  const keywords=document.getElementById('ek-'+id)?.value||'';
   if(!price||Number(price)<1){showToast('Enter a valid price','error');return;}
   try{
-    const r=await fetch(API+'/listings/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,price:Number(price),category,size})});
+    const r=await fetch(API+'/listings/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:SESSION,price:Number(price),category,size,keywords})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Error');
     showToast('Listing updated');
