@@ -418,19 +418,26 @@ IMPORTANT: Return raw JSON only — no markdown, no code fences, no explanation.
     if (response.error) throw new Error(response.error.message || 'Claude API error');
 
     const text = response.content?.[0]?.text || '';
-    // Extract JSON from response (strip any markdown fences)
+    console.log('[AI assist] raw response:', text.slice(0, 500));
     // Strip markdown code fences if Claude wrapped the JSON
-    const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '');
-    const jsonMatch = stripped.match(/\{[\s\S]*?\}/s) || stripped.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in AI response: ' + text.slice(0, 200));
+    const stripped = text.replace(/```(?:json)?[\r\n]*/gi, '').replace(/```/g, '').trim();
+    // Find the outermost {...} block (greedy, last resort brute-force)
     let result;
-    try { result = JSON.parse(jsonMatch[0]); }
-    catch(parseErr) {
-      // Try extracting the largest {...} block
-      const allMatches = [...stripped.matchAll(/\{[\s\S]*\}/g)];
-      const longest = allMatches.sort((a,b) => b[0].length - a[0].length)[0];
-      if (!longest) throw new Error('JSON parse failed: ' + parseErr.message);
-      result = JSON.parse(longest[0]);
+    try {
+      // First: try parsing the whole stripped response directly
+      result = JSON.parse(stripped);
+    } catch(_) {
+      // Second: find the first { and last } and parse between them
+      const start = stripped.indexOf('{');
+      const end   = stripped.lastIndexOf('}');
+      if (start === -1 || end === -1 || end <= start) {
+        throw new Error('No JSON object in AI response: ' + text.slice(0, 300));
+      }
+      try {
+        result = JSON.parse(stripped.slice(start, end + 1));
+      } catch(parseErr) {
+        throw new Error('JSON parse failed: ' + parseErr.message + ' | raw: ' + text.slice(0, 300));
+      }
     }
 
     res.json({ success: true, ...result });
