@@ -235,7 +235,7 @@ nav{position:sticky;top:0;z-index:100;background:var(--ink);display:flex;align-i
     <div class="pane" id="pane-sales"><div id="salesList"><div class="spinner"></div></div></div>
 
     <div class="pane" id="pane-create">
-      <form class="create-form" onsubmit="submitListing(event)">
+      <form class="create-form" onsubmit="submitListing(event)" novalidate>
         <div class="form-group">
           <label class="form-label">Photos (up to 8)</label>
           <div class="drop-zone" id="dropZone" onclick="document.getElementById('photoInput').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
@@ -961,6 +961,12 @@ function updateSizeField(){
 
 async function submitListing(e){
   e.preventDefault();if(!SESSION)return;
+  // Manual validation (form has novalidate to prevent browser pattern errors)
+  const titleVal=document.getElementById('newTitle').value.trim();
+  const priceVal=document.getElementById('newPrice').value;
+  if(!titleVal){showToast('Please add a title','error');return;}
+  if(!priceVal||parseFloat(priceVal)<1){showToast('Price must be at least $1','error');return;}
+  if(!photoFiles.length){showToast('Please add at least one photo','error');return;}
   const btn=document.getElementById('submitBtn');
   btn.disabled=true;btn.textContent='Publishing…';
   const fd=new FormData();

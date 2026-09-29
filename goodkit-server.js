@@ -631,7 +631,7 @@ app.post('/listings', upload.array('photos', 8), async (req, res) => {
     if (!stripe_account_id) return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     const priceInCents  = Math.round(parseFloat(price) * 100);
     const shippingCents = Math.round(parseFloat(shipping_estimate || 0) * 100);
-    const weightOz      = parseInt(weight_oz || 0);
+    const weightOz      = parseInt(weight_oz || 0) || 0;
     if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1.00' });
     const photos   = req.files ? req.files.map(f => '/uploads/' + f.filename) : [];
     if (!photos.length) return res.status(400).json({ error: 'At least one photo is required' });
