@@ -340,6 +340,8 @@ let SESSION=null, SELLER=null, photoFiles=[];
   const p=new URLSearchParams(window.location.search), tok=p.get('token');
   const onboarded=p.get('onboarded'), accountId=p.get('account');
   window.history.replaceState({},'',window.location.pathname);
+  // Stash Stripe account ID in localStorage so it survives if session needs re-auth
+  if(onboarded && accountId){ try{localStorage.setItem('gk_pending_stripe',accountId);}catch(e){} }
   if(tok){
     // Magic link token — must verify first to get a session token
     try{
@@ -351,8 +353,15 @@ let SESSION=null, SELLER=null, photoFiles=[];
   } else {
     const s=tryGet();
     if(s){
-      if(onboarded && accountId){
-        // Stripe returned after onboarding — save account ID to listings
+      const pendingStripe=(() => { try{return localStorage.getItem('gk_pending_stripe');}catch(e){return null;} })();
+      if(pendingStripe){
+        try{
+          localStorage.removeItem('gk_pending_stripe');
+          await fetch(API+'/seller/stripe-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:s,stripe_account_id:pendingStripe})});
+        }catch(e){}
+        showToast('Stripe connected!','success');
+      } else if(onboarded && accountId){
+        // accountId still in memory (same-session return)
         try{
           await fetch(API+'/seller/stripe-account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:s,stripe_account_id:accountId})});
         }catch(e){}
