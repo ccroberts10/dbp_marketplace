@@ -120,6 +120,7 @@ db.exec(`
   `ALTER TABLE sales ADD COLUMN platform_payout INTEGER DEFAULT 0`,
   `ALTER TABLE seller_sessions ADD COLUMN role TEXT DEFAULT 'seller'`,
   `ALTER TABLE listings ADD COLUMN size TEXT DEFAULT ''`,
+  `ALTER TABLE seller_sessions ADD COLUMN stripe_account_id TEXT`,
 ].forEach(sql => { try { db.exec(sql); } catch(e) {} });
 
 // One-time: clear old DBP stripe_account_id values so sellers re-onboard with new GoodKit Stripe account
@@ -291,6 +292,9 @@ app.post('/seller/stripe-account', (req, res) => {
     if (!token || !stripe_account_id) return res.status(400).json({ error: 'token and stripe_account_id required' });
     const session = db.prepare("SELECT * FROM seller_sessions WHERE token=? AND used=1").get(token);
     if (!session) return res.status(401).json({ error: 'Invalid session' });
+    // Save to session (works even if seller has no listings yet)
+    db.prepare("UPDATE seller_sessions SET stripe_account_id=? WHERE token=?").run(stripe_account_id, token);
+    // Also update any existing listings
     db.prepare("UPDATE listings SET stripe_account_id=? WHERE seller_email=?").run(stripe_account_id, session.email);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -378,7 +382,10 @@ app.get('/seller/portal', (req, res) => {
     const threads = db.prepare("SELECT m.*, l.title as listing_title FROM messages m JOIN listings l ON m.listing_id=l.id WHERE l.seller_email=? OR m.from_email=? ORDER BY m.created_at DESC").all(email, email);
     res.json({
       success: true,
-      seller: { email, name: listings[0]?.seller_name || email, stripe_account_id: listings[0]?.stripe_account_id || null, stripe_connected: !!(listings[0]?.stripe_account_id && listings[0].stripe_account_id.startsWith('acct_')) },
+      seller: (() => {
+        const stripeId = listings[0]?.stripe_account_id || session.stripe_account_id || null;
+        return { email, name: listings[0]?.seller_name || email, stripe_account_id: stripeId, stripe_connected: !!(stripeId && stripeId.startsWith('acct_')) };
+      })(),
       stats: {
         totalEarned:    sales.filter(s => s.status === 'paid_out').reduce((sum, s) => sum + s.seller_payout, 0),
         pendingPayout:  sales.filter(s => s.status === 'delivered').reduce((sum, s) => sum + s.seller_payout, 0),
@@ -395,8 +402,11 @@ app.get('/seller/portal', (req, res) => {
 
 app.post('/listings', upload.array('photos', 8), async (req, res) => {
   try {
-    const { seller_name, seller_email, stripe_account_id, title, category, size, description, condition, price, shipping_estimate, weight_oz } = req.body;
+    const { seller_name, seller_email, stripe_account_id: client_stripe_id, title, category, size, description, condition, price, shipping_estimate, weight_oz } = req.body;
     if (!seller_name || !seller_email || !title || !price) return res.status(400).json({ error: 'Missing required fields' });
+    // Fall back to session-stored stripe_account_id if client didn't send one
+    const sellerSession = db.prepare("SELECT * FROM seller_sessions WHERE email=? AND used=1 ORDER BY created_at DESC LIMIT 1").get(seller_email);
+    const stripe_account_id = client_stripe_id || sellerSession?.stripe_account_id || null;
     if (!stripe_account_id) return res.status(400).json({ error: 'Seller must complete Stripe onboarding first' });
     const priceInCents  = Math.round(parseFloat(price) * 100);
     const shippingCents = Math.round(parseFloat(shipping_estimate || 0) * 100);
