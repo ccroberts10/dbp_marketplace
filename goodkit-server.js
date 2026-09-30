@@ -290,6 +290,7 @@ const upload = multer({
   }
 });
 app.use('/uploads', express.static(uploadDir));
+app.use(express.static(__dirname, { index: false })); // serve icons, og-image, html files
 
 // ── EMAIL ────────────────────────────────────────────────────────────────────
 async function sendEmail(to, subject, html) {
@@ -1212,26 +1213,25 @@ app.get('/listing/:id', (req, res) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>${title}</title>
   <meta name="description" content="${desc}">
   <meta name="keywords" content="${keywords}">
   <link rel="canonical" href="${SITE_URL}/listing/${listing.id}">
-  <!-- Open Graph -->
   <meta property="og:type" content="product">
   <meta property="og:title" content="${listing.title}">
   <meta property="og:description" content="${desc}">
   <meta property="og:image" content="${photo}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:url" content="${SITE_URL}/listing/${listing.id}">
   <meta property="og:site_name" content="GoodKit">
   <meta property="product:price:amount" content="${price}">
   <meta property="product:price:currency" content="USD">
-  <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${listing.title}">
   <meta name="twitter:description" content="${desc}">
   <meta name="twitter:image" content="${photo}">
-  <!-- JSON-LD Product Schema -->
   <script type="application/ld+json">${JSON.stringify({
     "@context": "https://schema.org",
     "@type": "Product",
@@ -1245,29 +1245,89 @@ app.get('/listing/:id', (req, res) => {
       "price": price,
       "availability": "https://schema.org/InStock",
       "url": `${SITE_URL}/listing/${listing.id}`,
+      "seller": { "@type": "Organization", "name": "GoodKit" },
       "itemCondition": listing.condition === 'New' ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition"
     },
     "keywords": keywords
   })}</script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap">
   <style>
-    body{font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#111;}
-    img{max-width:100%;border-radius:8px;margin-bottom:16px;}
-    h1{font-size:24px;margin:0 0 8px;}
-    .price{font-size:28px;font-weight:700;color:#FF5C1A;margin:8px 0;}
-    .meta{color:#666;font-size:14px;margin-bottom:16px;}
-    .desc{line-height:1.6;margin-bottom:24px;}
-    .btn{display:inline-block;background:#FF5C1A;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;}
-    .keywords{font-size:12px;color:#999;margin-top:24px;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0a0a0a;color:#f0f0f0;font-family:'Space Mono',monospace;min-height:100vh}
+    /* Nav */
+    .nav{background:#0a0a0a;border-bottom:2px solid #222;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+    .nav-logo{font-size:20px;font-weight:700;text-decoration:none;color:#fff;letter-spacing:-0.5px}
+    .nav-logo span{color:#FF5C1A}
+    .nav-cta{background:#FF5C1A;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none}
+    /* Content */
+    .container{max-width:800px;margin:0 auto;padding:32px 20px 80px}
+    /* Photo gallery */
+    .gallery{margin-bottom:28px}
+    .gallery-main{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;background:#111;display:block}
+    .gallery-thumbs{display:flex;gap:8px;margin-top:8px;overflow-x:auto}
+    .gallery-thumbs img{width:72px;height:72px;object-fit:cover;border-radius:6px;cursor:pointer;border:2px solid transparent;flex-shrink:0;transition:border-color .15s}
+    .gallery-thumbs img.active{border-color:#FF5C1A}
+    /* Info */
+    .listing-title{font-size:22px;font-weight:700;line-height:1.3;margin-bottom:10px}
+    .listing-price{font-size:36px;font-weight:700;color:#FF5C1A;margin-bottom:14px}
+    .listing-badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+    .badge{background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:5px 12px;font-size:12px;color:#aaa}
+    .section-label{font-size:11px;font-weight:700;letter-spacing:1px;color:#666;text-transform:uppercase;margin-bottom:8px;margin-top:24px}
+    .desc-text{font-size:14px;line-height:1.8;color:#ccc;font-family:system-ui,sans-serif}
+    .keywords-list{font-size:12px;color:#555;line-height:1.8;font-family:system-ui,sans-serif}
+    /* CTA */
+    .cta-bar{margin-top:32px;border-top:1px solid #222;padding-top:24px}
+    .cta-btn{display:block;width:100%;background:#FF5C1A;color:#fff;text-align:center;padding:16px;border-radius:8px;font-family:inherit;font-size:16px;font-weight:700;text-decoration:none;letter-spacing:0.3px}
+    .cta-sub{text-align:center;font-size:12px;color:#555;margin-top:10px}
+    /* Seller */
+    .seller-row{display:flex;align-items:center;gap:10px;padding:14px 0;border-top:1px solid #1a1a1a;margin-top:16px}
+    .seller-avatar{width:36px;height:36px;border-radius:50%;background:#222;border:1px solid #333;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+    .seller-name{font-size:14px;color:#aaa}
+    @media(min-width:640px){
+      .layout{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start}
+      .gallery{margin-bottom:0}
+    }
   </style>
 </head>
 <body>
-  ${photos[0] ? `<img src="${SITE_URL}${photos[0]}" alt="${listing.title}">` : ''}
-  <h1>${listing.title}</h1>
-  <div class="price">$${price}</div>
-  <div class="meta">${listing.category}${listing.size ? ' · ' + listing.size : ''} · ${listing.condition} condition · Sold by ${listing.seller_name}</div>
-  <div class="desc">${listing.description || ''}</div>
-  <a class="btn" href="${SITE_URL}/goodkit-marketplace.html#${listing.id}">View on GoodKit →</a>
-  ${keywords ? `<div class="keywords">Tags: ${keywords}</div>` : ''}
+<nav class="nav">
+  <a class="nav-logo" href="${SITE_URL}">goodkit<span>.</span></a>
+  <a class="nav-cta" href="${SITE_URL}/goodkit-marketplace.html">Shop All Gear</a>
+</nav>
+<div class="container">
+  <div class="layout">
+    <div class="gallery">
+      ${photos[0] ? `<img class="gallery-main" id="mainPhoto" src="${SITE_URL}${photos[0]}" alt="${listing.title}">` : `<div class="gallery-main" style="display:flex;align-items:center;justify-content:center;font-size:48px;">🚴</div>`}
+      ${photos.length > 1 ? `<div class="gallery-thumbs">${photos.map((p, i) => `<img src="${SITE_URL}${p}" class="${i===0?'active':''}" onclick="setPhoto('${SITE_URL}${p}',this)" alt="Photo ${i+1}">`).join('')}</div>` : ''}
+    </div>
+    <div class="info">
+      <h1 class="listing-title">${listing.title}</h1>
+      <div class="listing-price">$${price}</div>
+      <div class="listing-badges">
+        ${listing.category ? `<span class="badge">${listing.category}</span>` : ''}
+        ${listing.size ? `<span class="badge">${listing.size}</span>` : ''}
+        <span class="badge">${listing.condition} condition</span>
+      </div>
+      ${listing.description ? `<div class="section-label">Description</div><div class="desc-text">${listing.description.replace(/\n/g,'<br>')}</div>` : ''}
+      <div class="seller-row">
+        <div class="seller-avatar">🧑</div>
+        <div class="seller-name">Sold by <strong>${listing.seller_name}</strong></div>
+      </div>
+      <div class="cta-bar">
+        <a class="cta-btn" href="${SITE_URL}/goodkit-marketplace.html#${listing.id}">Buy on GoodKit →</a>
+        <div class="cta-sub">Secure checkout · Shippo-powered shipping · Seller keeps 88%</div>
+      </div>
+      ${keywords ? `<div class="section-label" style="margin-top:28px">Tags</div><div class="keywords-list">${keywords}</div>` : ''}
+    </div>
+  </div>
+</div>
+<script>
+function setPhoto(src, el){
+  document.getElementById('mainPhoto').src=src;
+  document.querySelectorAll('.gallery-thumbs img').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+</script>
 </body>
 </html>`);
   } catch(err) { res.status(500).send('Error loading listing'); }
