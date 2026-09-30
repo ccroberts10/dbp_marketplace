@@ -252,7 +252,7 @@ async function loadListings(){
     const data=await res.json();
     allListings=data.listings||[];
     const hashCat=location.hash.startsWith('#cat=')?decodeURIComponent(location.hash.slice(5)):'';
-    if(hashCat){const el=document.getElementById('catFilter');if(el)[...el.options].forEach(o=>{if(o.value===hashCat)o.selected=true;});}
+    if(hashCat){const el=document.getElementById('catFilter');if(el)[...el.options].forEach(o=>{if(o.value===hashCat||o.text===hashCat)o.selected=true;});}
     filterListings();
   }catch(e){
     document.getElementById('listingsGrid').innerHTML=`<div class="empty" style="grid-column:1/-1"><strong>Can't reach server.</strong><br>Make sure the API is running.</div>`;
