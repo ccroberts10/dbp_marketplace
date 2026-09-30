@@ -858,8 +858,9 @@ async function runAiAssist(){
     const fd=new FormData();
     fd.append('photo',photoFiles[0]);
     const r=await fetch(API+'/ai/analyze-listing',{method:'POST',body:fd});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'AI error');
+    let d;
+    try { d=await r.json(); } catch(_){ throw new Error('Server returned HTTP '+r.status+' (not JSON)'); }
+    if(!r.ok)throw new Error(d.error||'AI error (HTTP '+r.status+')');
 
     // Fill form fields (only if currently empty or if user confirms overwrite)
     const titleEl=document.getElementById('newTitle');
