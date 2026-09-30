@@ -855,8 +855,25 @@ async function runAiAssist(){
   status.style.display='block';status.textContent='Reading your photo with AI…';
 
   try{
+    // Compress photo to max 1200px / 0.8 quality before upload
+    const compressedBlob = await new Promise((resolve)=>{
+      const img=new Image();
+      const url=URL.createObjectURL(photoFiles[0]);
+      img.onload=()=>{
+        const MAX=1200;
+        let w=img.width,h=img.height;
+        if(w>MAX||h>MAX){const s=Math.min(MAX/w,MAX/h);w=Math.round(w*s);h=Math.round(h*s);}
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        canvas.toBlob(b=>resolve(b),'image/jpeg',0.82);
+        URL.revokeObjectURL(url);
+      };
+      img.onerror=()=>resolve(photoFiles[0]);
+      img.src=url;
+    });
     const fd=new FormData();
-    fd.append('photo',photoFiles[0]);
+    fd.append('photo', compressedBlob, 'photo.jpg');
     const r=await fetch(API+'/ai/analyze-listing',{method:'POST',body:fd});
     let d;
     try { d=await r.json(); } catch(_){ throw new Error('Server returned HTTP '+r.status+' (not JSON)'); }
