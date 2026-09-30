@@ -1001,7 +1001,25 @@ async function submitListing(e){
   fd.append('seller_email',SELLER.email||'');
   fd.append('seller_name',SELLER.name||SELLER.email||'');
   fd.append('stripe_account_id',SELLER.stripe_account_id||'');
-  photoFiles.forEach(f=>fd.append('photos',f));
+  // Compress all photos before upload (iPhone photos are 4-8MB and crash the server)
+  const compressPhoto = (file) => new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const s = Math.min(MAX/w, MAX/h); w = Math.round(w*s); h = Math.round(h*s); }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(b => resolve(b || file), 'image/jpeg', 0.82);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+  const compressedPhotos = await Promise.all(photoFiles.map(compressPhoto));
+  compressedPhotos.forEach((b, i) => fd.append('photos', b, `photo${i}.jpg`));
   try{
     const r=await fetch(API+'/listings',{method:'POST',body:fd});
     let d;
