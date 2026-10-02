@@ -125,6 +125,8 @@ body{font-family:'ABC Maxi Round','Nunito',system-ui,sans-serif;background:var(-
 .btn-lg{padding:14px 28px;font-size:15px;}
 
 .hero{min-height:90vh;background:#0a0a0a;display:flex;flex-direction:column;justify-content:flex-end;padding:calc(100px + env(safe-area-inset-top,0px)) 24px 64px;position:relative;overflow:hidden;}
+.hero-photo{position:absolute;inset:0;z-index:0;background:url('/hero-bike.jpg') center 40% / cover no-repeat;opacity:0.55;}
+.hero-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom, rgba(10,10,10,0.3) 0%, rgba(10,10,10,0.15) 35%, rgba(10,10,10,0.6) 65%, #0a0a0a 100%);}
 .hero-bg-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'ABC Maxi Round','Nunito',system-ui,sans-serif;font-weight:900;font-size:clamp(140px,25vw,380px);text-transform:uppercase;letter-spacing:-0.04em;line-height:1;color:rgba(255,255,255,0.025);white-space:nowrap;pointer-events:none;user-select:none;}
 .hero-inner{position:relative;z-index:1;max-width:800px;}
 .hero-label{display:inline-block;font-family:'Space Mono',monospace;font-size:10px;font-weight:400;letter-spacing:0.2em;text-transform:uppercase;color:#F2C12E;margin-bottom:28px;}
@@ -223,6 +225,7 @@ footer{background:#0a0a0a;padding:40px 24px;display:flex;flex-direction:column;a
 </nav>
 
 <section class="hero">
+  <div class="hero-photo"></div>
   <div class="hero-bg-text">GK</div>
   <div class="hero-inner">
     <div class="hero-label">Used cycling gear marketplace</div>
