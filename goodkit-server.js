@@ -1221,6 +1221,51 @@ app.get('/ccx/verify', (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /ccx/teams/:code — public team storefront page
+app.get('/ccx/teams/:code', (req, res) => {
+  res.sendFile(path.join(__dirname, 'goodkit-ccx-team.html'));
+});
+
+// GET /ccx/teams/:code/data — JSON data for team storefront
+app.get('/ccx/teams/:code/data', (req, res) => {
+  try {
+    const team = db.prepare("SELECT id, team_name, school, code, fund_balance, total_earned, created_at FROM ccx_teams WHERE code=? AND status='active'").get(req.params.code.toUpperCase());
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+
+    const listings = db.prepare(`
+      SELECT id, title, category, condition, price, shipping_estimate, photos, description, created_at
+      FROM listings
+      WHERE ccx_code=? AND status='approved'
+      ORDER BY created_at DESC
+    `).all(team.code);
+
+    const salesCount = db.prepare("SELECT COUNT(*) as n FROM sales WHERE ccx_code=? AND status != 'pending'").get(team.code);
+
+    res.json({
+      success: true,
+      team: {
+        team_name:    team.team_name,
+        school:       team.school,
+        code:         team.code,
+        total_earned: team.total_earned,
+        created_at:   team.created_at
+      },
+      listings: listings.map(l => ({
+        id:          l.id,
+        title:       l.title,
+        category:    l.category,
+        condition:   l.condition,
+        price:       l.price,
+        shipping:    l.shipping_estimate,
+        photos:      JSON.parse(l.photos || '[]'),
+        description: l.description,
+        created_at:  l.created_at
+      })),
+      sales_count: salesCount?.n || 0
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /ccx — team registration page
 app.get('/ccx', (req, res) => {
   res.sendFile(path.join(__dirname, 'goodkit-ccx-register.html'));
