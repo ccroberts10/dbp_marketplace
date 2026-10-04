@@ -211,7 +211,39 @@ db.exec(`
   `ALTER TABLE sales ADD COLUMN tracking_url TEXT`,
   // SEO: searchable keywords per listing
   `ALTER TABLE listings ADD COLUMN keywords TEXT DEFAULT ''`,
+  // CCX: collegiate cycling exchange team code on listings
+  `ALTER TABLE listings ADD COLUMN ccx_code TEXT DEFAULT NULL`,
+  // CCX: sales ccx fund amount
+  `ALTER TABLE sales ADD COLUMN ccx_fund INTEGER DEFAULT 0`,
+  `ALTER TABLE sales ADD COLUMN ccx_code TEXT DEFAULT NULL`,
 ].forEach(sql => { try { db.exec(sql); } catch(e) {} });
+
+// CCX tables (full create — safe with IF NOT EXISTS)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ccx_teams (
+    id TEXT PRIMARY KEY,
+    team_name TEXT NOT NULL,
+    school TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    captain_name TEXT NOT NULL,
+    captain_email TEXT NOT NULL UNIQUE,
+    payout_email TEXT,
+    fund_balance INTEGER DEFAULT 0,
+    total_earned INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    auth_token TEXT,
+    token_expires TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS ccx_payouts (
+    id TEXT PRIMARY KEY,
+    team_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    paid_at TEXT
+  );
+`);
 
 // One-time: clear old DBP stripe_account_id values so sellers re-onboard with new GoodKit Stripe account
 // Only clears IDs that start with 'acct_' (Stripe Connect express accounts from DBP)
@@ -241,26 +273,32 @@ function getLabelTier(weightOz) {
 }
 
 // ── FEE STRUCTURE ────────────────────────────────────────────────────────────
-// Seller keeps 88%. GoodKit takes 12% of item price only.
+// Seller keeps 85%. GoodKit takes 15% of item price only.
+//   - 13% goes to GoodKit platform
+//   - 2% goes to CCX team fund (if listing has a ccx_code)
 // Shipping passes through at cost (flat tier price charged to buyer).
-// Stripe fee (~2.9% + $0.30) comes out of platform's 12%.
-function calculateSplit(itemPriceCents, shippingCents) {
+// Stripe fee (~2.9% + $0.30) comes out of platform's 13%.
+function calculateSplit(itemPriceCents, shippingCents, ccxCode) {
   shippingCents = shippingCents || 0;
   const totalCents    = itemPriceCents + shippingCents;
   const stripeFee     = Math.round(totalCents * 0.029 + 30);
-  const platformFee   = Math.round(itemPriceCents * 0.12);   // 12% of item only
+  const platformFee   = Math.round(itemPriceCents * 0.15);   // 15% of item only
+  const ccxFund       = ccxCode ? Math.round(itemPriceCents * 0.02) : 0; // 2% to team fund
+  const goodkitNet    = platformFee - ccxFund;               // 13% to GoodKit
   const sellerNet     = itemPriceCents - platformFee + shippingCents;
-  const platformNet   = Math.max(platformFee - stripeFee, 0);
+  const platformNet   = Math.max(goodkitNet - stripeFee, 0);
   return {
     itemPrice:    itemPriceCents / 100,
     shipping:     shippingCents  / 100,
     total:        totalCents     / 100,
     sellerNet:    sellerNet      / 100,
     platformFee:  platformFee    / 100,
+    ccxFund:      ccxFund        / 100,
     platformNet:  platformNet    / 100,
     stripeFee:    stripeFee      / 100,
-    sellerPct:    88,
-    platformPct:  12
+    sellerPct:    85,
+    platformPct:  15,
+    ccxCode:      ccxCode || null
   };
 }
 
@@ -631,7 +669,7 @@ app.get('/seller/portal', (req, res) => {
 
 app.post('/listings', upload.array('photos', 8), async (req, res) => {
   try {
-    const { seller_name, seller_email, stripe_account_id: client_stripe_id, title, category, size, description, condition, price, shipping_estimate, weight_oz, keywords } = req.body;
+    const { seller_name, seller_email, stripe_account_id: client_stripe_id, title, category, size, description, condition, price, shipping_estimate, weight_oz, keywords, ccx_code } = req.body;
     if (!seller_name || !seller_email || !title || !price) return res.status(400).json({ error: 'Missing required fields' });
     // Fall back to session-stored stripe_account_id if client didn't send one
     const sellerSession = db.prepare("SELECT * FROM seller_sessions WHERE email=? AND used=1 AND stripe_account_id IS NOT NULL AND stripe_account_id != '' ORDER BY created_at DESC LIMIT 1").get(seller_email);
@@ -643,16 +681,22 @@ app.post('/listings', upload.array('photos', 8), async (req, res) => {
     if (priceInCents < 100) return res.status(400).json({ error: 'Minimum price is $1.00' });
     const photos   = req.files ? req.files.map(f => '/uploads/' + f.filename) : [];
     if (!photos.length) return res.status(400).json({ error: 'At least one photo is required' });
+    // Validate CCX code if provided
+    let validCcxCode = null;
+    if (ccx_code && ccx_code.trim()) {
+      const ccxTeam = db.prepare("SELECT code FROM ccx_teams WHERE code=? AND status='active'").get(ccx_code.trim().toUpperCase());
+      validCcxCode = ccxTeam ? ccxTeam.code : null;
+    }
     const id       = uuidv4();
     const stripeId = (stripe_account_id && stripe_account_id.trim() !== '') ? stripe_account_id.trim() : null;
-    db.prepare(`INSERT INTO listings (id,seller_name,seller_email,stripe_account_id,title,category,size,description,condition,price,shipping_estimate,weight_oz,photos,status,keywords) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',?)`)
-      .run(id, seller_name.trim(), seller_email.trim(), stripeId, title.trim(), category || 'Other', size || '', description || '', condition || 'Good', priceInCents, shippingCents, weightOz, JSON.stringify(photos), keywords || '');
+    db.prepare(`INSERT INTO listings (id,seller_name,seller_email,stripe_account_id,title,category,size,description,condition,price,shipping_estimate,weight_oz,photos,status,keywords,ccx_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'approved',?,?)`)
+      .run(id, seller_name.trim(), seller_email.trim(), stripeId, title.trim(), category || 'Other', size || '', description || '', condition || 'Good', priceInCents, shippingCents, weightOz, JSON.stringify(photos), keywords || '', validCcxCode);
     const newListing = db.prepare("SELECT * FROM listings WHERE id = ?").get(id);
     await fireListingAlerts(newListing);
-    await sendEmail(NOTIFY_EMAIL, `[GoodKit] New listing: ${title}`, `Seller: ${seller_name} · ${seller_email}\nItem: ${title}\nPrice: $${priceInCents/100}\nWeight: ${weightOz}oz`);
-    const split = calculateSplit(priceInCents, shippingCents);
+    await sendEmail(NOTIFY_EMAIL, `[GoodKit] New listing: ${title}`, `Seller: ${seller_name} · ${seller_email}\nItem: ${title}\nPrice: $${priceInCents/100}\nWeight: ${weightOz}oz${validCcxCode ? `\nCCX: ${validCcxCode}` : ''}`);
+    const split = calculateSplit(priceInCents, shippingCents, validCcxCode);
     const label = getLabelTier(weightOz);
-    res.json({ success: true, listingId: id, split, label });
+    res.json({ success: true, listingId: id, split, label, ccx_code: validCcxCode });
   } catch(err) { console.error('Listing error:', err); res.status(500).json({ error: err.message }); }
 });
 
@@ -738,7 +782,7 @@ app.post('/checkout', async (req, res) => {
     if (!listing) return res.status(404).json({ error: 'Listing not found or no longer available' });
 
     const shippingCents = (deliveryType === 'pickup') ? 0 : (listing.shipping_estimate || 0);
-    const split         = calculateSplit(listing.price, shippingCents);
+    const split         = calculateSplit(listing.price, shippingCents, listing.ccx_code);
     const totalCharge   = listing.price + shippingCents;
     const labelInfo     = getLabelTier(listing.weight_oz);
 
@@ -761,7 +805,7 @@ app.post('/checkout', async (req, res) => {
       listing.stripe_account_id.startsWith('acct_');
 
     if (hasStripeAccount) {
-      // platform keeps 12% of item price — Stripe sends remainder to seller automatically
+      // platform keeps 15% of item price (13% GoodKit + 2% CCX fund if applicable)
       const appFee = Math.round(split.platformFee * 100);
       piParams.application_fee_amount = Math.max(appFee, 0);
       piParams.transfer_data = { destination: listing.stripe_account_id };
@@ -770,14 +814,16 @@ app.post('/checkout', async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create(piParams);
 
     const saleId = uuidv4();
-    db.prepare(`INSERT INTO sales (id,listing_id,buyer_email,buyer_name,buyer_street1,buyer_city,buyer_state,buyer_zip,payment_intent_id,amount,seller_payout,platform_payout,delivery_type,label_tier) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    db.prepare(`INSERT INTO sales (id,listing_id,buyer_email,buyer_name,buyer_street1,buyer_city,buyer_state,buyer_zip,payment_intent_id,amount,seller_payout,platform_payout,delivery_type,label_tier,ccx_code,ccx_fund) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(saleId, listingId, buyerEmail,
         buyerName || '', buyerStreet1 || '', buyerCity || '', buyerState || '', buyerZip || '',
         paymentIntent.id, listing.price,
         Math.round(split.sellerNet * 100),
         Math.round(split.platformFee * 100),
         deliveryType || 'shipping',
-        labelInfo.tier
+        labelInfo.tier,
+        listing.ccx_code || null,
+        Math.round((split.ccxFund || 0) * 100)
       );
 
     res.json({
@@ -980,6 +1026,13 @@ app.post('/webhook', async (req, res) => {
     db.prepare("UPDATE listings SET status='sold', sold_at=datetime('now') WHERE id=?").run(listingId);
     db.prepare("UPDATE sales SET status='delivered' WHERE payment_intent_id=?").run(pi.id);
 
+    // CCX fund credit — if listing had a ccx_code, credit the team fund
+    const saleForCcx = db.prepare("SELECT ccx_code, ccx_fund FROM sales WHERE payment_intent_id=?").get(pi.id);
+    if (saleForCcx?.ccx_code && saleForCcx.ccx_fund > 0) {
+      db.prepare("UPDATE ccx_teams SET fund_balance=fund_balance+?, total_earned=total_earned+? WHERE code=?")
+        .run(saleForCcx.ccx_fund, saleForCcx.ccx_fund, saleForCcx.ccx_code);
+    }
+
     const listing = db.prepare("SELECT * FROM listings WHERE id=?").get(listingId);
     const sale    = db.prepare("SELECT * FROM sales WHERE payment_intent_id=?").get(pi.id);
 
@@ -1063,6 +1116,114 @@ app.post('/webhook', async (req, res) => {
     console.log('Sold:', listingId);
   }
   res.json({ received: true });
+});
+
+// ── CCX — COLLEGIATE CYCLING EXCHANGE ─────────────────────────────────────────
+
+// Generate a unique 6-char uppercase team code from school + team name
+function generateCcxCode(school, teamName) {
+  const base = (school + teamName).toUpperCase().replace(/[^A-Z]/g, '');
+  const code = base.slice(0, 4) + Math.random().toString(36).slice(2, 4).toUpperCase();
+  // Ensure uniqueness — retry on collision
+  const existing = db.prepare("SELECT id FROM ccx_teams WHERE code=?").get(code);
+  if (existing) return generateCcxCode(school, teamName + Math.random());
+  return code;
+}
+
+// POST /ccx/register — captain registers their team
+app.post('/ccx/register', async (req, res) => {
+  try {
+    const { team_name, school, captain_name, captain_email, payout_email } = req.body;
+    if (!team_name || !school || !captain_name || !captain_email)
+      return res.status(400).json({ error: 'team_name, school, captain_name, captain_email required' });
+
+    // Check for duplicate email
+    const existing = db.prepare("SELECT id, code FROM ccx_teams WHERE captain_email=?").get(captain_email);
+    if (existing) return res.status(409).json({ error: 'A team is already registered with this email', code: existing.code });
+
+    const id   = uuidv4();
+    const code = generateCcxCode(school, team_name);
+    db.prepare(`INSERT INTO ccx_teams (id, team_name, school, code, captain_name, captain_email, payout_email)
+                VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, team_name, school, code, captain_name, captain_email, payout_email || captain_email);
+
+    // Send welcome email with team code
+    await sendEmail(captain_email, `Your GoodKit CCX team code: ${code}`, emailTemplate('Welcome to GoodKit CCX 🚴',
+      `<p style="font-size:15px;color:#1A1A14;margin:0 0 16px;">Hi ${captain_name}, your team is registered!</p>
+       <div style="background:#E8E0D0;padding:20px 24px;margin-bottom:20px;">
+         <p style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#888;margin:0 0 4px;">${school} · ${team_name}</p>
+         <p style="font-size:13px;color:#888;margin:0 0 8px;">Your CCX team code</p>
+         <p style="font-size:40px;font-weight:900;color:#FF5C1A;letter-spacing:0.1em;margin:0;">${code}</p>
+       </div>
+       <p style="font-size:13px;color:#555;line-height:1.7;margin:0 0 16px;">Share this code with your teammates. When they list gear on GoodKit and enter <strong>${code}</strong>, 2% of every sale automatically flows into your team fund.</p>
+       <p style="font-size:13px;color:#555;margin:0 0 20px;"><strong>How it works:</strong> Seller keeps 85% · 2% to team fund · 13% GoodKit fee</p>
+       <a href="${BASE_URL}/ccx/dashboard?team=${id}" style="display:inline-block;background:#FF5C1A;color:white;padding:14px 28px;font-size:14px;font-weight:600;text-decoration:none;">View Team Dashboard →</a>`
+    ));
+
+    await sendEmail(NOTIFY_EMAIL, `[GoodKit CCX] New team: ${school} ${team_name}`, `Code: ${code}\nCaptain: ${captain_name} <${captain_email}>`);
+
+    res.json({ success: true, code, team_id: id, message: `Team registered! Code: ${code}` });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /ccx/dashboard — team captain dashboard page
+app.get('/ccx/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'goodkit-ccx-dashboard.html'));
+});
+
+// GET /ccx/team/:id — team stats (for dashboard)
+app.get('/ccx/team/:id', (req, res) => {
+  try {
+    const team = db.prepare("SELECT * FROM ccx_teams WHERE id=?").get(req.params.id);
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+
+    const sales = db.prepare(`
+      SELECT s.*, l.title, l.category, l.seller_name FROM sales s
+      JOIN listings l ON s.listing_id = l.id
+      WHERE s.ccx_code = ? AND s.status != 'pending'
+      ORDER BY s.created_at DESC
+    `).all(team.code);
+
+    const payouts = db.prepare("SELECT * FROM ccx_payouts WHERE team_id=? ORDER BY created_at DESC").all(team.id);
+
+    res.json({
+      success: true,
+      team: {
+        id:            team.id,
+        team_name:     team.team_name,
+        school:        team.school,
+        code:          team.code,
+        captain_name:  team.captain_name,
+        fund_balance:  team.fund_balance / 100,
+        total_earned:  team.total_earned / 100,
+        status:        team.status,
+        created_at:    team.created_at
+      },
+      sales: sales.map(s => ({
+        id:         s.id,
+        title:      s.title,
+        category:   s.category,
+        seller:     s.seller_name,
+        amount:     s.amount / 100,
+        ccx_fund:   s.ccx_fund / 100,
+        created_at: s.created_at
+      })),
+      payouts: payouts.map(p => ({ ...p, amount: p.amount / 100 }))
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /ccx/verify?code=XXXXX — validate a CCX code at listing time
+app.get('/ccx/verify', (req, res) => {
+  try {
+    const team = db.prepare("SELECT team_name, school, code FROM ccx_teams WHERE code=? AND status='active'").get(req.query.code);
+    if (!team) return res.status(404).json({ valid: false, error: 'Invalid or inactive team code' });
+    res.json({ valid: true, team_name: team.team_name, school: team.school, code: team.code });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /ccx — team registration page
+app.get('/ccx', (req, res) => {
+  res.sendFile(path.join(__dirname, 'goodkit-ccx-register.html'));
 });
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────

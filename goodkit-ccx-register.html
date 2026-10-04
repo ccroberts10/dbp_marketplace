@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoodKit CCX — Register Your Team</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap">
+<style>
+  :root {
+    --bg: #f7f7f5; --bg2: #ffffff; --fg: #0a0a0a; --fg2: #555550;
+    --accent: #FF5C1A; --accent2: #1A6FFF; --border: #e0e0da;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; }
+
+  .page { max-width: 520px; margin: 0 auto; padding: 48px 16px 64px; }
+
+  .brand-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 32px; }
+  .wordmark { font-size: 22px; font-weight: 900; letter-spacing: -0.03em; }
+  .wordmark span { color: var(--accent); }
+  .sub-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg2); border-left: 2px solid var(--border); padding-left: 8px; }
+
+  h1 { font-size: clamp(26px, 5vw, 34px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; text-wrap: balance; margin-bottom: 10px; }
+  .sub { font-size: 15px; color: var(--fg2); line-height: 1.6; margin-bottom: 32px; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 32px; }
+  .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .stat-n { font-size: 24px; font-weight: 900; letter-spacing: -0.03em; }
+  .stat-n.orange { color: var(--accent); }
+  .stat-n.blue { color: var(--accent2); }
+  .stat-l { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg2); margin-top: 2px; }
+
+  form { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
+  .form-row { margin-bottom: 18px; }
+  label { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg2); margin-bottom: 6px; }
+  input { width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 11px 14px; font-size: 15px; font-family: inherit; background: var(--bg); color: var(--fg); outline: none; transition: border-color .15s; }
+  input:focus { border-color: var(--accent); }
+  .hint { font-size: 12px; color: var(--fg2); margin-top: 5px; }
+
+  button[type=submit] {
+    width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 14px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer;
+    margin-top: 6px; transition: opacity .15s;
+  }
+  button[type=submit]:hover { opacity: .88; }
+  button[type=submit]:disabled { opacity: .5; cursor: default; }
+
+  .msg { border-radius: 8px; padding: 14px 16px; margin-top: 18px; font-size: 14px; line-height: 1.5; display: none; }
+  .msg.success { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+  .msg.error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+  .code-highlight { font-size: 32px; font-weight: 900; letter-spacing: 0.12em; color: var(--accent); display: block; margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand-row">
+    <span class="wordmark">goodkit<span>.</span></span>
+    <span class="sub-label">CCX Program</span>
+  </div>
+
+  <h1>Register your team.<br>Fund your season.</h1>
+  <p class="sub">Get a unique team code. When teammates list gear on GoodKit, 2% of every sale goes straight into your team fund — automatically.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-n orange">85%</div><div class="stat-l">Seller keeps</div></div>
+    <div class="stat"><div class="stat-n blue">2%</div><div class="stat-l">Team fund</div></div>
+    <div class="stat"><div class="stat-n">13%</div><div class="stat-l">Platform fee</div></div>
+  </div>
+
+  <form id="regForm">
+    <div class="form-row">
+      <label>School / University</label>
+      <input type="text" id="school" placeholder="Fort Lewis College" required>
+    </div>
+    <div class="form-row">
+      <label>Team Name</label>
+      <input type="text" id="teamName" placeholder="FLC Cycling Club" required>
+    </div>
+    <div class="form-row">
+      <label>Captain Name</label>
+      <input type="text" id="captainName" placeholder="Your full name" required>
+    </div>
+    <div class="form-row">
+      <label>Captain Email</label>
+      <input type="email" id="captainEmail" placeholder="you@school.edu" required>
+      <p class="hint">Your team code and dashboard link will be sent here.</p>
+    </div>
+    <div class="form-row">
+      <label>Payout Email <span style="font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <input type="email" id="payoutEmail" placeholder="treasurer@teamaccount.com">
+      <p class="hint">Where monthly team fund payouts are sent. Defaults to captain email.</p>
+    </div>
+    <button type="submit" id="submitBtn">Register Team →</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+
+<script>
+const form = document.getElementById('regForm');
+const btn  = document.getElementById('submitBtn');
+const msg  = document.getElementById('msg');
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  btn.disabled = true;
+  btn.textContent = 'Registering…';
+  msg.style.display = 'none';
+
+  try {
+    const res = await fetch('/ccx/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school:         document.getElementById('school').value.trim(),
+        team_name:      document.getElementById('teamName').value.trim(),
+        captain_name:   document.getElementById('captainName').value.trim(),
+        captain_email:  document.getElementById('captainEmail').value.trim(),
+        payout_email:   document.getElementById('payoutEmail').value.trim() || undefined
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      msg.className = 'msg success';
+      msg.innerHTML = `Your team is registered!<br>
+        <span class="code-highlight">${data.code}</span>
+        Share this code with your teammates. Check your email for your dashboard link.`;
+      msg.style.display = 'block';
+      form.reset();
+      btn.textContent = 'Registered ✓';
+    } else {
+      msg.className = 'msg error';
+      msg.textContent = data.error || 'Something went wrong. Try again.';
+      msg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Register Team →';
+    }
+  } catch(err) {
+    msg.className = 'msg error';
+    msg.textContent = 'Network error. Please try again.';
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Register Team →';
+  }
+});
+</script>
+</body>
+</html>

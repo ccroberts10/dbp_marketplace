@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CCX Team Dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap">
+<style>
+  :root {
+    --bg: #f7f7f5; --bg2: #ffffff; --fg: #0a0a0a; --fg2: #555550;
+    --accent: #FF5C1A; --accent2: #1A6FFF; --border: #e0e0da;
+    --green: #16a34a; --green-bg: #f0fdf4; --green-border: #86efac;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; }
+
+  /* Loading / auth states */
+  #authGate, #loadingState, #dashContent { display: none; }
+  #loadingState { display: flex; }
+
+  .page { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; }
+
+  .brand-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 28px; }
+  .wordmark { font-size: 20px; font-weight: 900; letter-spacing: -0.03em; }
+  .wordmark span { color: var(--accent); }
+  .sub-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg2); border-left: 2px solid var(--border); padding-left: 8px; }
+
+  /* Auth gate */
+  #authGate { flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; gap: 12px; }
+  #authGate h2 { font-size: 22px; font-weight: 800; }
+  #authGate p { color: var(--fg2); font-size: 14px; max-width: 320px; line-height: 1.6; }
+
+  /* Loading */
+  #loadingState { flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 12px; color: var(--fg2); font-size: 14px; }
+  .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Team header */
+  .team-header { margin-bottom: 24px; }
+  .team-school { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg2); margin-bottom: 4px; }
+  .team-name { font-size: clamp(22px, 4vw, 30px); font-weight: 900; letter-spacing: -0.03em; }
+  .code-badge {
+    display: inline-block; margin-top: 8px;
+    background: var(--fg); color: var(--bg);
+    font-size: 13px; font-weight: 700; letter-spacing: 0.12em;
+    padding: 5px 12px; border-radius: 5px;
+  }
+
+  /* Stats grid */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
+  @media (max-width: 400px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .stat-n { font-size: 26px; font-weight: 900; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; line-height: 1; }
+  .stat-n.orange { color: var(--accent); }
+  .stat-n.blue { color: var(--accent2); }
+  .stat-n.green { color: var(--green); }
+  .stat-l { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg2); margin-top: 4px; }
+
+  /* Fund callout */
+  .fund-box {
+    background: var(--green-bg); border: 1.5px solid var(--green-border);
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 24px;
+    display: flex; gap: 16px; align-items: flex-start;
+  }
+  .fund-icon { font-size: 24px; flex-shrink: 0; line-height: 1; margin-top: 2px; }
+  .fund-title { font-size: 14px; font-weight: 700; color: var(--green); margin-bottom: 3px; }
+  .fund-balance { font-size: 38px; font-weight: 900; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; color: var(--green); line-height: 1; margin-bottom: 4px; }
+  .fund-note { font-size: 12px; color: var(--fg2); line-height: 1.5; }
+
+  /* Share section */
+  .section-head { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg2); margin-bottom: 12px; }
+  .share-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 24px; }
+  .code-display { font-size: 36px; font-weight: 900; letter-spacing: 0.14em; color: var(--accent); text-align: center; padding: 12px; margin: 8px 0; }
+  .copy-btn {
+    width: 100%; background: var(--fg); color: var(--bg); border: none; border-radius: 7px;
+    padding: 11px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+    transition: opacity .15s;
+  }
+  .copy-btn:hover { opacity: .8; }
+  .share-hint { font-size: 12px; color: var(--fg2); margin-top: 10px; line-height: 1.5; }
+
+  /* Recent sales */
+  .sales-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 24px; overflow: hidden; }
+  .sales-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg2); }
+  .sale-row { padding: 13px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .sale-row:last-child { border-bottom: none; }
+  .sale-icon { width: 32px; height: 32px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .sale-info { flex: 1; min-width: 0; }
+  .sale-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sale-date { font-size: 11px; color: var(--fg2); margin-top: 1px; }
+  .sale-fund { text-align: right; flex-shrink: 0; }
+  .sale-fund-n { font-size: 13px; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+  .sale-fund-l { font-size: 10px; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.04em; }
+  .no-sales { padding: 28px 18px; text-align: center; color: var(--fg2); font-size: 13px; }
+
+  /* Payout section */
+  .payout-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .payout-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .payout-label { font-size: 13px; color: var(--fg2); }
+  .payout-val { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .payout-note { font-size: 12px; color: var(--fg2); line-height: 1.55; border-top: 1px solid var(--border); padding-top: 12px; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+    background: var(--fg); color: var(--bg); border-radius: 8px; padding: 10px 18px;
+    font-size: 13px; font-weight: 600; transition: transform .25s ease; pointer-events: none; white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="brand-row">
+    <span class="wordmark">goodkit<span>.</span></span>
+    <span class="sub-label">CCX Dashboard</span>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loadingState">
+    <div class="spinner"></div>
+    <span>Loading your dashboard…</span>
+  </div>
+
+  <!-- Auth gate (no valid token) -->
+  <div id="authGate" style="display:none;">
+    <h2>Access your team dashboard</h2>
+    <p>Check your email for the dashboard link sent when your team was registered. Or contact <a href="mailto:hello@good-kit.com">hello@good-kit.com</a>.</p>
+  </div>
+
+  <!-- Dashboard content -->
+  <div id="dashContent" style="display:none;">
+    <div class="team-header">
+      <div class="team-school" id="teamSchool"></div>
+      <div class="team-name" id="teamName"></div>
+      <div class="code-badge" id="teamCodeBadge"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat"><div class="stat-n green" id="statBalance">$0</div><div class="stat-l">Fund balance</div></div>
+      <div class="stat"><div class="stat-n blue" id="statTotal">$0</div><div class="stat-l">Total earned</div></div>
+      <div class="stat"><div class="stat-n orange" id="statSales">0</div><div class="stat-l">Sales</div></div>
+    </div>
+
+    <!-- Fund balance callout -->
+    <div class="fund-box">
+      <div class="fund-icon">💰</div>
+      <div>
+        <div class="fund-title">Team fund balance</div>
+        <div class="fund-balance" id="fundBalance">$0.00</div>
+        <div class="fund-note" id="fundNote">2% of every tagged sale funds your program. Payouts processed monthly.</div>
+      </div>
+    </div>
+
+    <!-- Share your code -->
+    <div class="section-head">Your team code</div>
+    <div class="share-box">
+      <div style="font-size:13px;color:var(--fg2);">Share this code with teammates and alumni. Tell them to enter it when creating a listing on GoodKit.</div>
+      <div class="code-display" id="codeDisplay">——</div>
+      <button class="copy-btn" id="copyBtn">Copy team code</button>
+      <div class="share-hint">Post it in your team group chat, Discord, or newsletter. Every sale that uses this code adds to your fund — automatically.</div>
+    </div>
+
+    <!-- Recent sales -->
+    <div class="section-head">Recent sales</div>
+    <div class="sales-box">
+      <div class="sales-header">Sales tagged to your team</div>
+      <div id="salesList"></div>
+    </div>
+
+    <!-- Payout info -->
+    <div class="section-head">Payouts</div>
+    <div class="payout-box">
+      <div class="payout-row">
+        <span class="payout-label">Payout email</span>
+        <span class="payout-val" id="payoutEmail">—</span>
+      </div>
+      <div class="payout-row">
+        <span class="payout-label">Payout schedule</span>
+        <span class="payout-val">Monthly</span>
+      </div>
+      <div class="payout-row" style="margin-bottom:0;">
+        <span class="payout-label">Captain</span>
+        <span class="payout-val" id="captainName">—</span>
+      </div>
+      <div class="payout-note" style="margin-top:12px;">
+        Minimum payout is $25. Balances under $25 carry forward to the next month. To update your payout email, contact <a href="mailto:hello@good-kit.com">hello@good-kit.com</a>.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = cents => '$' + (cents / 100).toFixed(2);
+const fmtShort = cents => {
+  const n = cents / 100;
+  return '$' + (n >= 1000 ? (n/1000).toFixed(1) + 'k' : n.toFixed(2));
+};
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function formatDate(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function renderSales(sales) {
+  const list = $('salesList');
+  if (!sales || sales.length === 0) {
+    list.innerHTML = '<div class="no-sales">No sales yet — share your code to get started.</div>';
+    return;
+  }
+  list.innerHTML = sales.map(s => `
+    <div class="sale-row">
+      <div class="sale-icon">🚴</div>
+      <div class="sale-info">
+        <div class="sale-title">${s.title || 'Listing'}</div>
+        <div class="sale-date">${formatDate(s.created_at)}</div>
+      </div>
+      <div class="sale-fund">
+        <div class="sale-fund-n">+${fmt(s.ccx_fund || 0)}</div>
+        <div class="sale-fund-l">to fund</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadDashboard(token) {
+  try {
+    const res = await fetch('/ccx/dashboard?token=' + encodeURIComponent(token));
+    if (res.status === 401 || res.status === 403) {
+      $('loadingState').style.display = 'none';
+      $('authGate').style.display = 'flex';
+      return;
+    }
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    const t = data.team;
+    $('teamSchool').textContent = t.school;
+    $('teamName').textContent   = t.team_name;
+    $('teamCodeBadge').textContent = t.code;
+    $('codeDisplay').textContent   = t.code;
+    $('statBalance').textContent   = fmtShort(t.fund_balance || 0);
+    $('statTotal').textContent     = fmtShort(t.total_earned || 0);
+    $('statSales').textContent     = data.sales?.length || 0;
+    $('fundBalance').textContent   = fmt(t.fund_balance || 0);
+    $('payoutEmail').textContent   = t.payout_email || t.captain_email;
+    $('captainName').textContent   = t.captain_name;
+    renderSales(data.sales);
+
+    $('loadingState').style.display = 'none';
+    $('dashContent').style.display  = 'block';
+
+    $('copyBtn').addEventListener('click', () => {
+      navigator.clipboard.writeText(t.code).then(() => {
+        showToast('Team code copied!');
+      }).catch(() => {
+        showToast('Code: ' + t.code);
+      });
+    });
+
+  } catch(err) {
+    $('loadingState').style.display = 'none';
+    $('authGate').style.display = 'flex';
+  }
+}
+
+// Get token from URL
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+if (token) {
+  loadDashboard(token);
+} else {
+  $('loadingState').style.display = 'none';
+  $('authGate').style.display = 'flex';
+}
+</script>
+</body>
+</html>
